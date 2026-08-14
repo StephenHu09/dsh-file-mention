@@ -15,7 +15,12 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const read = (p) => readFile(join(root, p), 'utf8')
 
-const stripExportLine = (src) => src.replace(/^export\s*\{[^}]*\};?\s*$/gm, '')
+// 剥离所有 export 形态：`export { a, b };`、`export function f`、`export const x`、`export async function f`
+const stripExportLine = (src) =>
+  src
+    .replace(/^export\s*\{[^}]*\};?\s*$/gm, '')
+    .replace(/^export\s+(async\s+)?function\s+/gm, '$1function ')
+    .replace(/^export\s+(const|let|var|class)\s+/gm, '$1 ')
 const stripCoreImport = (src) => src.replace(/^import\s*\{[^}]*\}\s*from\s*'\.\/core\.js';?\s*$/gm, '')
 
 const core = stripExportLine(await read('src/core.js'))
@@ -34,6 +39,8 @@ const indexJs =
   '\nexport { name, inject, apply };\n'
 
 // ---- Client 产物：经典脚本 + CJS factory（与 DSH 打包约定一致）----
+// core 必须一并内联进 factory：client 源码经 stripCoreImport 后引用 filterFiles 等，
+// 缺了定义会在浏览器侧抛 ReferenceError（服务端不受影响，故此前路由正常）。
 const clientJs =
   banner +
   'window.__ModuleLoader__.load({\n' +
@@ -42,6 +49,12 @@ const clientJs =
   '\t\tvar module = { exports: {} };\n' +
   '\t\tvar exports = module.exports;\n' +
   '\t\tObject.defineProperty(exports, Symbol.toStringTag, { value: "Module" });\n' +
+  '\t\t// ---- src/core.js (inlined) ----\n' +
+  core
+    .split('\n')
+    .map((line) => '\t\t' + line)
+    .join('\n') +
+  '\n\t\t// ---- src/client.js (inlined) ----\n' +
   client
     .split('\n')
     .map((line) => '\t\t' + line)
