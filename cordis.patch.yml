@@ -1,0 +1,4 @@
+# dsh-file-mention —— 安装组合行（随包发布，dsh plugin add 自动挂载）
+- insert:
+    - id: file-mention
+      name: 'dsh-file-mention'
