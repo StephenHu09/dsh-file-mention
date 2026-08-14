@@ -9,7 +9,7 @@
  *
  * 构建时由 scripts/build.mjs 将 src/core.js 内联进来，产物无任何外部依赖。
  */
-import { compileRules, matchRules, lastMatchRule } from './core.js'
+import { compileRules, matchRules, lastMatchRule, dirMayLeadToMatch } from './core.js'
 
 const name = 'dsh-file-mention'
 const inject = ['sessions', 'webServer']
@@ -52,8 +52,10 @@ async function readTextSafe(fs, path) {
  * - `inheritDir(p)`：目录级规则状态，返回 true（纳入并继承给子级）、
  *   false（显式排除，阻断继承）或 null（无规则，沿用父级继承状态）。
  *   这是 .aiinclude 目录规则（doc/）与否定规则（!doc/private/）的语义基础。
+ * - `mayContain(p)`：可选剪枝判定；目录不可能通往任何命中时跳过递归，
+ *   大幅降低 .aiinclude 目录规则场景的遍历开销。
  */
-async function walkFiles(fs, dirTarget, includeFile, inheritDir) {
+async function walkFiles(fs, dirTarget, includeFile, inheritDir, mayContain) {
   const out = []
   const walk = async (target, relPath, level, inherited) => {
     if (out.length >= CAP || level > MAX_DEPTH) return
@@ -73,6 +75,7 @@ async function walkFiles(fs, dirTarget, includeFile, inheritDir) {
           if (state !== null) matched = state
         }
         if (SKIP.has(entry.name) && !matched) continue
+        if (!matched && mayContain !== undefined && mayContain !== null && !mayContain(p)) continue
         await walk(entry.target, p, level + 1, matched)
       } else if (entry.type === 'file') {
         const p = relPath === '' ? entry.name : relPath + '/' + entry.name
@@ -204,6 +207,7 @@ function apply(ctx) {
             const win = lastMatchRule(aiRules, p, true)
             return win === undefined ? null : !win.negate
           },
+          (p) => dirMayLeadToMatch(aiRules, p),
         )
         const seen = new Set(files)
         for (const p of extras) {

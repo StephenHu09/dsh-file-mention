@@ -53,6 +53,11 @@ function apply(ctx) {
     trigger: '@',
     name: 'file',
     order: 4,
+    // 预热：会话控制器创建（页面加载/切换会话）时后台预取一次，
+    // 输入 @ 时命中 30s 缓存，避免首次等待文件遍历
+    warm(session) {
+      fetchFiles(session.sessionId).catch(() => {})
+    },
     async candidates(session, { query, signal }) {
       const files = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []

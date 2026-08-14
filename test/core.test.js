@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compileRules, matchRules, filterFiles } from '../src/core.js'
+import { compileRules, matchRules, filterFiles, dirMayLeadToMatch } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
   const rules = compileRules(['', '  ', '# comment', '*.log', ''])
@@ -86,4 +86,34 @@ test('filterFiles 大小写不敏感', () => {
 test('filterFiles 空查询返回前 limit 项', () => {
   const files = Array.from({ length: 100 }, (_, i) => `f${i}.kt`)
   assert.equal(filterFiles(files, '', 50).length, 50)
+})
+
+test('dirMayLeadToMatch：basename 目录规则只放行同名目录', () => {
+  const rules = compileRules(['doc/'])
+  assert.equal(dirMayLeadToMatch(rules, 'doc'), true)
+  // 子目录的纳入由 doc 命中后的继承完成，剪枝判定层面自身不匹配
+  assert.equal(dirMayLeadToMatch(rules, 'doc/07_project_review讨论'), false)
+  assert.equal(dirMayLeadToMatch(rules, 'app'), false)
+  assert.equal(dirMayLeadToMatch(rules, 'app/src'), false)
+})
+
+test('dirMayLeadToMatch：basename 文件规则不可剪枝', () => {
+  const rules = compileRules(['*.log'])
+  assert.equal(dirMayLeadToMatch(rules, 'app'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'app/src/deep'), true)
+})
+
+test('dirMayLeadToMatch：斜杠规则按段前缀放行', () => {
+  const rules = compileRules(['app/build/generated/**'])
+  assert.equal(dirMayLeadToMatch(rules, 'app'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'app/build'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'app/build/generated'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'doc'), false)
+  assert.equal(dirMayLeadToMatch(rules, 'app/src'), false)
+})
+
+test('dirMayLeadToMatch：锚定规则只放行锚定前缀', () => {
+  const rules = compileRules(['/build'])
+  assert.equal(dirMayLeadToMatch(rules, 'build'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'app'), false)
 })
