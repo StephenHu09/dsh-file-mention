@@ -111,6 +111,9 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
   - chip（`{insert: ReferenceInsert}`）占位符 U+FFFC 在 DshChipCell 字体中 advance = **4em**（TTF 实测），
     16px 字号下 chip 宽固定 64px、label 视觉可用约 57px（≈7 个 ASCII 字符）——路径必然截断，
     官方 `@subagent` 源因此用 `{text}` 而非 `{insert}`；调研细节见 docs/chip-preview.html
+- npm 发布后 npmmirror 同步延迟（实测 ~20 分钟）+ pnpm 元数据缓存粘性：短时间内 `dsh plugin add`/`pnpm add`
+  会解析到旧 latest（0.1.13 发布后 add 装成 ^0.1.11）。诊断：`npm view <pkg> version`（默认 registry 看镜像同步）；
+  修复：`pnpm add <pkg>@latest` 或显式 `<pkg>@<版本>` 刷新缓存（2026-08-15 实测）
 
 ## 架构（详见 docs/architecture.md）
 
@@ -148,7 +151,7 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
 - 工作树干净；lib/ 与 src/ 同步；测试 39 单测 + 20 集成全通过；版本 0.1.13
-- **已发布**：npm registry 最新 **0.1.13**（官方源，latest tag）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.11 已推送，v0.1.13 待推送）；profile pnpm-workspace.yaml 豁免已更新至 @hucj/dsh-file-mention@0.1.13
+- **已发布**：npm registry 最新 **0.1.13**（官方源，latest tag）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.11 已推送，v0.1.13 待推送）；profile pnpm-workspace.yaml 豁免含 @hucj/dsh-file-mention@0.1.11 与 @0.1.13
 - **v0.1.13（合并 3fa7845 之后所有修改）**：@ 候选菜单显示适配（加宽 537→720px + 行字号 14→13px + 行高 40→32px，同屏 +25% 行）；parseStatusZ 重命名原路径标记 D（git 同内容删除配对成 R 源时不丢状态）+ 状态矩阵集成测试（8 种 git 状态区分 + R 配对场景）；移除文件名尾部变更标记 [M]/[A]/[D]/[R]（用户评估不实用，删除 statusLetter/appendStatusMark，dirty 仍用于「未提交变更优先」排序）
 - **重要排查结论**：当前 GUI 进程（未重启）是旧版 Host，dirty 返回 string[] → client 兼容分支全标 [A]——旧版"无法区分 A 和 M"的根源；v0.1.13 host 返回结构化 [{path,status}]，重启后正确
 - 输入框引用变色方案（lexicon/chip）经实测不可行已回退，教训见第 9 节；dsh web 重启后生效；已知限制见 README.md 与 docs/recovery.md
