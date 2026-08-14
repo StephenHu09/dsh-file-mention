@@ -20,8 +20,9 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 
 ## 常用命令
 
-- `npm run check` —— build（内联构建 src/ → lib/）+ test（35 用例）
-- `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数）
+- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（35 用例）+ **集成测试（18 用例，真实 git）**
+- `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数，秒级）
+- `npm run test:it` —— node --test 跑 test/host.integration.test.js（模拟开发场景，真实 git + 真实 fs，约 20-30s）
 
 ### DSH agent 沙箱注意事项（Windows）
 
@@ -43,8 +44,10 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 35 用例）
-- 修改 `src/core.js` 必须同步补/改测试；全部用例必须通过
+- `test/core.test.js`（node:test，当前 35 用例）—— 纯函数
+- `test/host.integration.test.js`（node:test，当前 18 用例）—— host 集成：独立临时 git 仓库 + 真实 git/fs，模拟新建/修改/重命名/删除/子目录/忽略/回退/缓存场景；**每次版本提交前跑 npm run check 必须全绿**
+- 修改 `src/core.js` 必须同步补/改测试；修改 `src/host.js` 涉及列表行为时必须同步补/改集成测试（先复现场景再改代码）
+- 集成测试注意：host 缓存为**模块级共享**，同一仓库多实例会命中旧缓存——需要多状态的用例拆成独立仓库/独立用例
 
 ### 4. 安装目录同步（每次版本提交必做）
 安装目录为**真实目录拷贝**（非符号链接）：
@@ -123,7 +126,7 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 ## 约定
 
 - 零外部依赖：纯手写 JS，ESM（"type": "module"），Node >= 22。
-- 测试只覆盖纯函数（core.js）；node:test + node:assert/strict。
+- 测试分层：单元测试只覆盖纯函数（core.js）；集成测试覆盖 host 列表行为（真实 git + 真实 fs，node:test + node:assert/strict）。
 - .aiinclude 语法与 .gitignore 一致但语义相反（命中即纳入）；嵌套目录配置展平为
   根相对规则、last-match-wins 实现层级覆盖；根 .aiinclude 不存在时不触发嵌套发现。
 - 注释与提交信息用中文；设计文档放 docs/。
@@ -132,6 +135,6 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 ## 当前状态（2026-08-14 会话快照）
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
-- 工作树干净；lib/ 与 src/ 同步；测试 35/35 通过；版本 0.1.11
+- 工作树干净；lib/ 与 src/ 同步；测试 35 单测 + 18 集成全通过；版本 0.1.11
 - **已发布**：npm registry 最新 0.1.11（官方源）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.11 已推送）
 - 已知限制与故障恢复见 README.md 与 docs/recovery.md

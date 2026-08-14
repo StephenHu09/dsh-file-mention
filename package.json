@@ -30,7 +30,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test test/core.test.js",
-    "check": "npm run build && npm test"
+    "test:it": "node --test test/host.integration.test.js",
+    "check": "npm run build && npm test && npm run test:it"
   },
   "engines": {
     "node": ">=22"

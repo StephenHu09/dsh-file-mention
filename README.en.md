@@ -124,8 +124,9 @@ Limitations: discovery requires a **root `.aiinclude`** to exist; nested configs
 
 ```bash
 npm run build   # build src/ → lib/ (zero-dep, inline + syntax check)
-npm test        # matcher unit tests (node:test)
-npm run check   # build + test
+npm test        # matcher unit tests (node:test, 35 cases)
+npm run test:it # host integration tests (real git + real fs, dev-scenario simulation, 18 cases)
+npm run check   # build + unit + integration (full gate before release)
 ```
 
 ### Directory layout

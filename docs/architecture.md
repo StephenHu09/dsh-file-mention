@@ -54,6 +54,13 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
   - `lib/client.js`：经典脚本 + `window.__ModuleLoader__.load({ id, factory })` CJS factory 包装（与 DSH 客户端模块系统约定一致，页面加载时注册 factory，物化时执行副作用）。
 - `cordis.patch.yml` 声明组合行，安装包后由 loader 自动挂载。
 
+### 4b. 测试策略
+
+- **单元测试**（test/core.test.js，35 用例）：只覆盖 src/core.js 纯函数（匹配器/解析器），秒级。
+- **集成测试**（test/host.integration.test.js，18 用例）：最小 ctx mock 加载 src/host.js（subprocess 走**真实 git**、fs 走**真实文件系统**），直调 `/file-mention/list` handler；每个用例独立临时 git 仓库，模拟真实开发场景：新建（新/已跟踪目录）、修改（staged/unstaged）、重命名（git mv/工作区 mv）、删除（git rm/手动删）、中文与空格路径、子目录会话（含大小写变体）、.gitignore 忽略/取消、.aiinclude 纳入、非 git 回退、空仓库、缓存时效、files 物理存在一致性。
+- 覆盖归因：历史四类 bug（未跟踪目录折叠、rename 取错路径、已删除残留、子目录裁剪）全部有对应集成用例。
+- 注意：host 缓存为模块级共享，同仓库多实例会命中旧缓存——多状态用例拆独立仓库。
+
 ## 客户端缓存与失效
 
 - 缓存键为**工作区 cwd**（响应携带 `cwd` 字段）：同工作区多会话共享一份列表；会话首次响应后记录其 cwd，旧版 Host（无 `cwd` 字段）退化为按 sessionId 缓存；

@@ -124,8 +124,9 @@ build/generated/**
 
 ```bash
 npm run build   # 构建 src/ → lib/（零依赖，纯拷贝 + 语法校验）
-npm test        # 匹配器单元测试（node:test）
-npm run check   # 构建 + 测试
+npm test        # 匹配器单元测试（node:test，35 用例）
+npm run test:it # host 集成测试（真实 git + 真实 fs，模拟开发场景，18 用例）
+npm run check   # 构建 + 单元测试 + 集成测试（发布前全跑）
 ```
 
 ### 目录结构
