@@ -19,6 +19,7 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | Match ranking | **Exact match** (path/basename equal) → **prefix match** → substring match (within group: changed-first, then alphabetical) |
 | Default ordering | **Uncommitted changes first** (git status changeset + untracked new files) → non-hidden dirs → hidden dirs (alphabetical within group) |
 | Git-tracked filtering | `git ls-files -c` tracked files ∪ `-o --exclude-standard` untracked non-ignored files; new files appear automatically, build artifacts stay out |
+| Deleted/renamed | Deleted files hidden automatically (`git ls-files -d`); renamed files (git mv) ranked as uncommitted changes |
 | `.aiinclude` | gitignore syntax, re-includes ignored files/dirs (dir rules inherit to children; nested per-directory config supported) |
 | Fallback mode | When git is unavailable / not a repo: falls back to `.gitignore` parsing + full scan |
 | Caching | Client: shared per workspace **cwd** + **stale-while-revalidate** (30s TTL: old list shown instantly, background refresh — `@` never waits); Host: layered git cache (repo root 60s / tracked 15s / dirty & untracked 5s); warm prefetch on session creation |

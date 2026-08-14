@@ -26,7 +26,8 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
   - 编译产物（`build/`、`.gradle/` 等）自动排除；
   - 输出即仓库相对路径，天然稳定。
 - **为什么必须单独取未跟踪文件**：`git status --porcelain` 会把整个未跟踪目录折叠成一条 `?? dir/`（目录项而非文件项），且 Host 末尾还会过滤掉以 `/` 结尾的条目——新建目录里的新文件从此消失，既进不了 `dirty` 也进不了 `files`；`ls-files -o --exclude-standard` 输出单个文件路径，天然解决折叠问题。未跟踪文件并入 `files`（可直接 @ 引用，无需 `git add`）并同时并入 `dirty`（客户端按未提交变更优先排序，dirty 只参与排序、不新增条目）。
-- 会话 cwd 位于仓库子目录时，将仓库相对路径转换为 cwd 相对路径（`rev-parse --show-toplevel` + 前缀裁剪），跟踪/未跟踪/变更集三条路径共用同一逻辑。
+- `git ls-files` / `git status` 在**会话 cwd 下运行**，输出路径天然相对 cwd（子目录会话同样成立），无需仓库根前缀裁剪；`rev-parse --show-toplevel` 仅用于判定 cwd 是否在仓库内（git 不可用时走回退扫描）。⚠️ 教训：曾对 git 输出做 `cwdRel` 前缀裁剪，导致子目录会话列表全空（git 输出已是 cwd 相对路径）。
+- **变更一致性**：`git ls-files -d` 剔除已删除文件（index 有、工作区无，如未 `git rm` 的手动删除），避免 @ 后模型读取失败；`git status --porcelain -z` 的重命名/复制条目格式为 `R  NEW\0OLD\0`（**新路径在前**），`parseStatusZ` 取当前条目（新路径）并跳过原路径字段；所有 git 调用统一带 `-c core.quotepath=false`（Linux git 默认对非 ASCII 路径做八进制转义，中文文件名会乱码）。
 - **降级路径**：git 不可用/非仓库时，解析 `.gitignore`（实现 gitignore 匹配子集）后全量扫描。此时未跟踪的非忽略文件本就混入——与 git 模式行为一致。
 
 ### 2. `.aiinclude` 重新纳入

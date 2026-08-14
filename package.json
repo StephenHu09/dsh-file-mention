@@ -1,6 +1,6 @@
 {
   "name": "@hucj/dsh-file-mention",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "DSH Web GUI @-mention workspace file picker: input @ to filter git-tracked files plus files re-included via .aiinclude, like Codex/Claude Code file references.",
   "type": "module",
   "main": "lib/index.js",

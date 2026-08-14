@@ -116,9 +116,15 @@ test('parseStatusZ：普通变更/删除/未跟踪', () => {
   ])
 })
 
-test('parseStatusZ：重命名取新路径（含路径带空格）', () => {
-  const text = 'R  app/old.kt\u0000app/new file.kt\u0000'
+test('parseStatusZ：重命名取新路径（真实 git -z 格式：R  NEW\0OLD\0，新路径在前）', () => {
+  const text = 'R  app/new file.kt\u0000app/old.kt\u0000'
   assert.deepEqual(parseStatusZ(text), ['app/new file.kt'])
+})
+
+test('parseStatusZ：重命名原路径字段被正确跳过，后随普通条目不受影响', () => {
+  const text = 'R  b.txt\u0000a.txt\u0000 M c.txt\u0000C  d.txt\u0000e.txt\u0000?? f.txt\u0000'
+  // R/C 取新路径并跳过原路径字段；` M`、`??` 按普通条目解析
+  assert.deepEqual(parseStatusZ(text), ['b.txt', 'c.txt', 'd.txt', 'f.txt'])
 })
 
 test('filterFiles：未提交变更优先，其次非隐藏，最后隐藏', () => {
