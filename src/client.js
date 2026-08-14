@@ -61,7 +61,7 @@ function apply(ctx) {
     async candidates(session, { query, signal }) {
       const files = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
-      return filterFiles(files, query, 50).map((f) => ({
+      return filterFiles(files, query, 100).map((f) => ({
         name: f.slice(f.lastIndexOf('/') + 1),
         description: f,
         icon: '\ud83d\udcc4',

@@ -83,6 +83,22 @@ test('filterFiles 大小写不敏感', () => {
   assert.deepEqual(filterFiles(files, 'sealactivity'), ['App/SealActivity.java'])
 })
 
+test('filterFiles 空查询：非隐藏目录优先，组内保持字母序', () => {
+  const files = ['zzz.md', '.agents/skills/a.md', 'app/Main.kt', '.codebuddy/plans/b.md', 'doc/计划.md']
+  assert.deepEqual(filterFiles(files, ''), [
+    'zzz.md',
+    'app/Main.kt',
+    'doc/计划.md',
+    '.agents/skills/a.md',
+    '.codebuddy/plans/b.md',
+  ])
+})
+
+test('filterFiles 空查询默认返回前 100 项', () => {
+  const files = Array.from({ length: 150 }, (_, i) => `f${i}.kt`)
+  assert.equal(filterFiles(files, '').length, 100)
+})
+
 test('filterFiles 空查询返回前 limit 项', () => {
   const files = Array.from({ length: 100 }, (_, i) => `f${i}.kt`)
   assert.equal(filterFiles(files, '', 50).length, 50)

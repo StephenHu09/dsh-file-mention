@@ -120,8 +120,12 @@ export function matchRules(rules, rel, isDir) {
 /**
  * 按查询词过滤文件列表：匹配 basename 或完整路径（大小写不敏感）。
  * 客户端 @ 菜单的过滤逻辑，独立出来以便测试。
+ *
+ * 空查询（仅输入 @）时的默认展示规则：
+ *   非隐藏目录（首段不以 . 开头）优先，隐藏目录排后；组内保持原有字母序。
+ * 有查询词时不做重排，只过滤。
  */
-export function filterFiles(files, query, limit = 50) {
+export function filterFiles(files, query, limit = 100) {
   const q = String(query || '').trim().toLowerCase()
   let matches = files
   if (q !== '') {
@@ -129,6 +133,15 @@ export function filterFiles(files, query, limit = 50) {
       const base = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
       return base.includes(q) || f.toLowerCase().includes(q)
     })
+  } else {
+    // 分区而非重排：host 已按字母序返回，分区后组内顺序自然保持
+    const hidden = []
+    const normal = []
+    for (const f of files) {
+      if (f.split('/')[0].startsWith('.')) hidden.push(f)
+      else normal.push(f)
+    }
+    matches = [...normal, ...hidden]
   }
   return matches.slice(0, limit)
 }
