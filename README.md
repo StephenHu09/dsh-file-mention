@@ -130,14 +130,20 @@ npm publish
 
 ## 故障恢复：插件导致 dsh web 起不来怎么办
 
-`dsh web` 启动时会组合 profile 配置并执行插件 `apply`；若插件在启动阶段抛错，整个启动会失败。
-恢复思路：**在启动前移除/禁用出错的插件配置**（配置文件随时可编辑，不需要 dsh 运行）。
+`dsh web` 启动时组合 profile 配置并执行插件 `apply`；若插件在启动阶段抛错，整个启动会失败。
+恢复思路：**在启动前让出错的插件不参与组合**（配置文件随时可编辑，不需要 dsh 运行）。
 
-1. 编辑 `~/.dsh/profiles/web/package.json`（用任意文本编辑器）：
-   - 从 `dsh.profile.bundles` 数组中**删除该包所在行**（这是导致启动失败的直接原因）
-   - 可选：同时从 `dependencies` 中删除该依赖
-2. 重新运行 `dsh web` → 正常启动
-3. 需要彻底清理时，再执行 `dsh plugin --profile web remove <包名>`（清理 node_modules）
+三种方式（由快到彻底）：
+
+1. **临时禁用（最快，不动配置）**：`dsh web --patch disable.yml`，其中：
+   ```yaml
+   - id: file-mention    # 出错插件的组合行 id（见启动报错信息）
+     disabled: true
+   ```
+2. **永久移除（首选）**：编辑 `~/.dsh/profiles/web/package.json`，从 `dsh.profile.bundles` 删除该包行，重新启动
+3. **彻底清理**：`dsh plugin --profile web remove <包名>`
+
+完整教程（含原理、验证技巧、FAQ、动态插件对比）：**[docs/recovery.md](docs/recovery.md)**
 
 > 提示：动态插件（cordis_define/run）是运行时注入、不写入 profile 配置，出错用
 > `cordis_undefine` 即可，永远不会影响 dsh 启动。
