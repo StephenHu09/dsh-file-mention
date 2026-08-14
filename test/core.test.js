@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compileRules, matchRules, filterFiles, dirMayLeadToMatch } from '../src/core.js'
+import { compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
   const rules = compileRules(['', '  ', '# comment', '*.log', ''])
@@ -83,12 +83,12 @@ test('filterFiles 大小写不敏感', () => {
   assert.deepEqual(filterFiles(files, 'sealactivity'), ['App/SealActivity.java'])
 })
 
-test('filterFiles 空查询：非隐藏目录优先，组内保持字母序', () => {
+test('filterFiles 空查询：非隐藏目录优先，组内按码位字母序', () => {
   const files = ['zzz.md', '.agents/skills/a.md', 'app/Main.kt', '.codebuddy/plans/b.md', 'doc/计划.md']
   assert.deepEqual(filterFiles(files, ''), [
-    'zzz.md',
     'app/Main.kt',
     'doc/计划.md',
+    'zzz.md',
     '.agents/skills/a.md',
     '.codebuddy/plans/b.md',
   ])
@@ -102,6 +102,54 @@ test('filterFiles 空查询默认返回前 100 项', () => {
 test('filterFiles 空查询返回前 limit 项', () => {
   const files = Array.from({ length: 100 }, (_, i) => `f${i}.kt`)
   assert.equal(filterFiles(files, '', 50).length, 50)
+})
+
+test('parseStatusZ：普通变更/删除/未跟踪', () => {
+  const text = ' M app/src/Main.kt\u0000M  app/build.gradle\u0000D  app/old.java\u0000?? .codebuddy/plans/x.md\u0000'
+  assert.deepEqual(parseStatusZ(text), [
+    'app/src/Main.kt',
+    'app/build.gradle',
+    'app/old.java',
+    '.codebuddy/plans/x.md',
+  ])
+})
+
+test('parseStatusZ：重命名取新路径（含路径带空格）', () => {
+  const text = 'R  app/old.kt\u0000app/new file.kt\u0000'
+  assert.deepEqual(parseStatusZ(text), ['app/new file.kt'])
+})
+
+test('filterFiles：未提交变更优先，其次非隐藏，最后隐藏', () => {
+  const files = [
+    'app/BaseActivity.kt',
+    '.agents/skills/a.md',
+    'doc/计划.md',
+    'app/src/MainActivity.kt',
+    'README.md',
+  ]
+  const dirty = new Set(['doc/计划.md', 'app/src/MainActivity.kt'])
+  // rank 内按码位字母序：'R'(README) < 'a'(app)
+  assert.deepEqual(filterFiles(files, '', 100, dirty), [
+    'app/src/MainActivity.kt',
+    'doc/计划.md',
+    'README.md',
+    'app/BaseActivity.kt',
+    '.agents/skills/a.md',
+  ])
+})
+
+test('filterFiles：输入查询词时命中项也按变更优先', () => {
+  const files = ['app/SealActivity.java', 'app/StampActivity.java', 'doc/计划.md']
+  const dirty = new Set(['app/StampActivity.java'])
+  assert.deepEqual(filterFiles(files, 'activity', 100, dirty), [
+    'app/StampActivity.java',
+    'app/SealActivity.java',
+  ])
+})
+
+test('filterFiles：无 dirty 时保持非隐藏优先（A 方案回归）', () => {
+  const files = ['zzz.md', '.agents/skills/a.md', 'app/Main.kt', 'doc/计划.md']
+  assert.deepEqual(filterFiles(files, ''), ['app/Main.kt', 'doc/计划.md', 'zzz.md', '.agents/skills/a.md'])
 })
 
 test('dirMayLeadToMatch：basename 目录规则只放行同名目录', () => {

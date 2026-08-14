@@ -32,7 +32,10 @@ function apply(ctx) {
         return response.json()
       })
       .then((value) => {
-        return value !== null && typeof value === 'object' && Array.isArray(value.files) ? value.files : []
+        return {
+          files: value !== null && typeof value === 'object' && Array.isArray(value.files) ? value.files : [],
+          dirty: value !== null && typeof value === 'object' && Array.isArray(value.dirty) ? value.dirty : [],
+        }
       })
       .catch((error) => {
         console.error('[file-mention] host list failed:', error)
@@ -59,9 +62,9 @@ function apply(ctx) {
       fetchFiles(session.sessionId).catch(() => {})
     },
     async candidates(session, { query, signal }) {
-      const files = await fetchFiles(session.sessionId)
+      const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
-      return filterFiles(files, query, 100).map((f) => ({
+      return filterFiles(files, query, 100, new Set(dirty)).map((f) => ({
         name: f.slice(f.lastIndexOf('/') + 1),
         description: f,
         icon: '\ud83d\udcc4',

@@ -1,6 +1,6 @@
 {
   "name": "dsh-file-mention",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DSH Web GUI @-mention workspace file picker: input @ to filter git-tracked files plus files re-included via .aiinclude, like Codex/Claude Code file references.",
   "type": "module",
   "main": "lib/index.js",
@@ -43,3 +43,4 @@
     "gitignore"
   ]
 }
+

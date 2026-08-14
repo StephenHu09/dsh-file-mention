@@ -9,7 +9,7 @@
  *
  * 构建时由 scripts/build.mjs 将 src/core.js 内联进来，产物无任何外部依赖。
  */
-import { compileRules, matchRules, lastMatchRule, dirMayLeadToMatch } from './core.js'
+import { compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ } from './core.js'
 
 const name = 'dsh-file-mention'
 const inject = ['sessions', 'webServer']
@@ -172,13 +172,15 @@ function apply(ctx) {
     try {
       const root = await fs.resolve(cwd)
       let files = []
+      let dirty = []
 
       // 1) git 跟踪文件：天然遵守 .gitignore，排除编译产物与未跟踪文件
       const rootText = await runGit(ctx, cwd, ['rev-parse', '--show-toplevel'])
       const trackedText = rootText !== undefined ? await runGit(ctx, cwd, ['ls-files', '-c']) : undefined
+      let cwdRelFromRepo = ''
       if (trackedText !== undefined) {
         const repoRoot = norm(rootText.trim())
-        const cwdRelFromRepo =
+        cwdRelFromRepo =
           repoRoot !== '' && norm(cwd).startsWith(repoRoot + '/')
             ? norm(cwd).slice(repoRoot.length + 1)
             : ''
@@ -188,6 +190,14 @@ function apply(ctx) {
           .filter((l) => l !== '')
           .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
           .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+
+        // 1b) 未提交变更（staged + unstaged + 删除 + 未跟踪）：@ 默认排序优先展示
+        const statusText = await runGit(ctx, cwd, ['status', '--porcelain', '-z'])
+        if (statusText !== undefined) {
+          dirty = parseStatusZ(statusText)
+            .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
+            .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+        }
       } else {
         // 回退：git 不可用/非仓库时，解析 .gitignore 后全量扫描
         const ignoreText = await readTextSafe(fs, cwd + '/.gitignore')
@@ -219,10 +229,10 @@ function apply(ctx) {
       }
 
       files = files.filter((p) => p !== '' && !p.endsWith('/')).slice(0, CAP).sort()
-      json(res, { files })
+      json(res, { files, dirty })
     } catch (error) {
       console.error('[file-mention] list failed:', error)
-      json(res, { files: [] })
+      json(res, { files: [], dirty: [] })
     }
   }
 

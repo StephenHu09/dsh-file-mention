@@ -118,30 +118,54 @@ export function matchRules(rules, rel, isDir) {
 }
 
 /**
+ * 解析 `git status --porcelain -z` 输出为变更文件路径列表。
+ * 每条 `<XY> <path>\0`；重命名/复制（R/C）占两个字段，取新路径。
+ * 路径含空格等特殊字符时依然精确（-z 不做引号转义）。
+ */
+export function parseStatusZ(text) {
+  const dirty = []
+  const parts = text.split('\0')
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i]
+    if (entry === '') continue
+    const code = entry[0]
+    if ((code === 'R' || code === 'C') && i + 1 < parts.length) {
+      i += 1
+      dirty.push(parts[i])
+    } else {
+      const path = entry.slice(3)
+      if (path !== '') dirty.push(path)
+    }
+  }
+  return dirty
+}
+
+/**
  * 按查询词过滤文件列表：匹配 basename 或完整路径（大小写不敏感）。
  * 客户端 @ 菜单的过滤逻辑，独立出来以便测试。
  *
- * 空查询（仅输入 @）时的默认展示规则：
- *   非隐藏目录（首段不以 . 开头）优先，隐藏目录排后；组内保持原有字母序。
- * 有查询词时不做重排，只过滤。
+ * 默认排序规则（空查询与命中项都适用，rank 升序 + 组内字母序）：
+ *   0. git 未提交变更（dirty 集合内）
+ *   1. 非隐藏目录（首段不以 . 开头）
+ *   2. 隐藏目录
  */
-export function filterFiles(files, query, limit = 100) {
+export function filterFiles(files, query, limit = 100, dirty) {
   const q = String(query || '').trim().toLowerCase()
+  const dirtySet = dirty instanceof Set ? dirty : undefined
+  const rank = (f) => {
+    if (dirtySet !== undefined && dirtySet.has(f)) return 0
+    if (f.split('/')[0].startsWith('.')) return 2
+    return 1
+  }
   let matches = files
   if (q !== '') {
     matches = files.filter((f) => {
       const base = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
       return base.includes(q) || f.toLowerCase().includes(q)
     })
-  } else {
-    // 分区而非重排：host 已按字母序返回，分区后组内顺序自然保持
-    const hidden = []
-    const normal = []
-    for (const f of files) {
-      if (f.split('/')[0].startsWith('.')) hidden.push(f)
-      else normal.push(f)
-    }
-    matches = [...normal, ...hidden]
+  }
+  if (dirtySet !== undefined || q === '') {
+    matches = [...matches].sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
   }
   return matches.slice(0, limit)
 }
