@@ -62,6 +62,22 @@ lib/index.js  lib/client.js  package.json  README.md  README.en.md  cordis.patch
 - **push 远程 / npm publish 必须用户明确指示**，不自动执行
 - 历史重写（filter-branch 等）前必须告知用户并确认；重写前先备份（bundle/tag）
 
+**发布流程（维护者操作，README 不收录，以此为准）**：
+
+```bash
+# GitHub（origin 已配置 git@github.com:StephenHu09/dsh-file-mention.git）
+git push origin main
+git tag v0.1.x && git push origin v0.1.x
+
+# npm（本机 registry 是 npmmirror 镜像，发布必须临时指定官方源）
+npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
+npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
+
+# 版本递增：0.1.x（当前 0.1.9 → 下一 0.1.10）；每次发布前 npm run check + 同步安装目录
+# 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
+# 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
+```
+
 ### 6. 文档同步（强制）
 - **README.md 与 README.en.md 必须保持同步**：任何对 README.md 的修改（增删章节、改描述、改命令），必须同时更新 README.en.md 的对应内容（结构一致、内容对应翻译），两者一起提交
 - README 顶部保留中英文互链（`[English](README.en.md) | 中文` / `English | [中文](README.md)`）

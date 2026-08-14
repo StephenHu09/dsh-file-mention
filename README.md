@@ -150,57 +150,10 @@ docs/
 
 详见 [docs/architecture.md](docs/architecture.md)。
 
-## 发布
-
-### GitHub（仓库已有完整历史，直接推送）
-
-```bash
-git remote add origin git@github.com:StephenHu09/dsh-file-mention.git
-git branch -M main
-git push -u origin main
-git tag v0.1.9 && git push origin v0.1.9
-```
-
-### npm
-
-```bash
-npm login                  # 首次：npmjs.com 注册账号并开启 2FA
-npm publish                # 发布当前版本（版本号递增策略见 AGENTS.md）
-npm view @hucj/dsh-file-mention   # 验证发布成功
-
-# 更新版本：升版本号 → npm run check → npm publish
-# 撤销（发布后 72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
-# 标记弃用（推荐替代撤销）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
-```
-
-## 已知限制
-
-- 只传路径、不附加内容：模型按路径读取文件（与 Claude Code 直接附加内容不同）
-- `.aiinclude` 嵌套配置依赖根配置存在才被发现；重型目录（node_modules 等）内不读取
-- Host 侧 `.aiinclude` 规则缓存 60 秒、git 结果缓存 5~60 秒（分层）、客户端列表 30 秒（SWR 先展示旧列表），编辑配置后数据最多 ~90 秒内收敛
-- git 跟踪过滤依赖本机 git；无 git 时降级模式会包含未跟踪的非忽略文件
-- 冷启动（首次请求）含嵌套发现全量扫描，约 1~2 秒；warm 预热后基本零等待
-
-## 故障恢复：插件导致 dsh web 起不来怎么办
-
-`dsh web` 启动时组合 profile 配置并执行插件 `apply`；若插件在启动阶段抛错，整个启动会失败。
-恢复思路：**在启动前让出错的插件不参与组合**（配置文件随时可编辑，不需要 dsh 运行）。
-
-三种方式（由快到彻底）：
-
-1. **临时禁用（最快，不动配置）**：`dsh web --patch disable.yml`，其中：
-   ```yaml
-   - id: file-mention    # 出错插件的组合行 id（见启动报错信息）
-     disabled: true
-   ```
-2. **永久移除（首选）**：编辑 `~/.dsh/profiles/web/package.json`，从 `dsh.profile.bundles` 删除该包行，重新启动
-3. **彻底清理**：`dsh plugin --profile web remove @hucj/dsh-file-mention`
-
-完整教程（含原理、验证技巧、FAQ、动态插件对比）：**[docs/recovery.md](docs/recovery.md)**
-
-> 提示：动态插件（cordis_define/run）是运行时注入、不写入 profile 配置，出错用
-> `cordis_undefine` 即可，永远不会影响 dsh 启动。
-
 ## License
 
 [MIT](LICENSE) © 2026 hucj
+
+---
+
+详细文档：[docs/architecture.md](docs/architecture.md)（架构设计）· [docs/recovery.md](docs/recovery.md)（故障恢复）· [AGENTS.md](AGENTS.md)（维护规则与发布流程）

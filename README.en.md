@@ -150,56 +150,10 @@ Type @ in the browser input
 
 See [docs/architecture.md](docs/architecture.md) for details.
 
-## Publishing
-
-### GitHub (repo already has full history — just push)
-
-```bash
-git remote add origin git@github.com:StephenHu09/dsh-file-mention.git
-git branch -M main
-git push -u origin main
-git tag v0.1.9 && git push origin v0.1.9
-```
-
-### npm
-
-```bash
-npm login                  # first time: register at npmjs.com and enable 2FA
-npm publish                # publish current version (versioning policy: see AGENTS.md)
-npm view @hucj/dsh-file-mention   # verify
-
-# Update: bump version → npm run check → npm publish
-# Unpublish (within 72h): npm unpublish @hucj/dsh-file-mention@<version> --force
-# Deprecate instead (recommended over unpublish): npm deprecate @hucj/dsh-file-mention@<version> "note"
-```
-
-## Known limitations
-
-- Path only, no content attached: the model reads the file by path (unlike Claude Code attaching content directly)
-- Nested `.aiinclude` discovery requires a root config; nested configs inside heavy dirs are not read
-- Host rule cache 60s, git result cache 5–60s (layered), client list 30s (SWR shows stale first) — config edits converge within ~90s
-- Git-tracked filtering depends on local git; without git, fallback mode includes untracked non-ignored files
-- Cold start (first request) includes a full nested-discovery scan, ~1–2s; after warm prefetch it's effectively zero-wait
-
-## Recovery: what if the plugin breaks dsh web startup
-
-`dsh web` composes the profile config and runs each plugin's `apply()` at startup; if any plugin throws during boot, the whole startup fails.
-Recovery idea: **keep the broken plugin out of the composition before starting** (config files are editable anytime — dsh doesn't need to be running).
-
-Three approaches (fastest → most thorough):
-
-1. **Temporarily disable (fastest, no config change)**: `dsh web --patch disable.yml`, where:
-   ```yaml
-   - id: file-mention    # the broken plugin's composition row id (see the startup error)
-     disabled: true
-   ```
-2. **Permanently remove (preferred)**: edit `~/.dsh/profiles/web/package.json`, delete the package row from `dsh.profile.bundles`, restart
-3. **Full cleanup**: `dsh plugin --profile web remove @hucj/dsh-file-mention`
-
-Full tutorial (principles, verification, FAQ, dynamic-plugin comparison): **[docs/recovery.md](docs/recovery.md)**
-
-> Tip: dynamic plugins (cordis_define/run) are injected at runtime and never touch the profile config — on failure just `cordis_undefine`; they can never break dsh startup.
-
 ## License
 
 [MIT](LICENSE) © 2026 hucj
+
+---
+
+Detailed docs: [docs/architecture.md](docs/architecture.md) (architecture) · [docs/recovery.md](docs/recovery.md) (recovery) · [AGENTS.md](AGENTS.md) (maintenance rules & publishing workflow)
