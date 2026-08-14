@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
-  stripRepoPrefix,
+  stripRepoPrefix, fileIcon, statusLetter, stripStatusSuffix,
 } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
@@ -107,34 +107,45 @@ test('filterFiles 空查询返回前 limit 项', () => {
   assert.equal(filterFiles(files, '', 50).length, 50)
 })
 
-test('parseStatusZ：普通变更/删除/未跟踪', () => {
+test('parseStatusZ：普通变更/删除/未跟踪（含状态码归一化）', () => {
   const text = ' M app/src/Main.kt\u0000M  app/build.gradle\u0000D  app/old.java\u0000?? .codebuddy/plans/x.md\u0000'
   assert.deepEqual(parseStatusZ(text), [
-    'app/src/Main.kt',
-    'app/build.gradle',
-    'app/old.java',
-    '.codebuddy/plans/x.md',
+    { path: 'app/src/Main.kt', status: 'M' },
+    { path: 'app/build.gradle', status: 'M' },
+    { path: 'app/old.java', status: 'D' },
+    { path: '.codebuddy/plans/x.md', status: 'A' },
   ])
 })
 
 test('parseStatusZ：重命名取新路径（真实 git -z 格式：R  NEW\0OLD\0，新路径在前）', () => {
   const text = 'R  app/new file.kt\u0000app/old.kt\u0000'
-  assert.deepEqual(parseStatusZ(text), ['app/new file.kt'])
+  assert.deepEqual(parseStatusZ(text), [{ path: 'app/new file.kt', status: 'R' }])
 })
 
 test('parseStatusZ：重命名原路径字段被正确跳过，后随普通条目不受影响', () => {
   const text = 'R  b.txt\u0000a.txt\u0000 M c.txt\u0000C  d.txt\u0000e.txt\u0000?? f.txt\u0000'
   // R/C 取新路径并跳过原路径字段；` M`、`??` 按普通条目解析
-  assert.deepEqual(parseStatusZ(text), ['b.txt', 'c.txt', 'd.txt', 'f.txt'])
+  assert.deepEqual(parseStatusZ(text), [
+    { path: 'b.txt', status: 'R' },
+    { path: 'c.txt', status: 'M' },
+    { path: 'd.txt', status: 'R' },
+    { path: 'f.txt', status: 'A' },
+  ])
 })
 
 test('parseStatusZ：R 条目在末尾（无原路径字段）不越界', () => {
   // 真实 git 总会输出原路径字段，此处验证解析器的防御性
-  assert.deepEqual(parseStatusZ('R  new.txt\u0000'), ['new.txt'])
+  assert.deepEqual(parseStatusZ('R  new.txt\u0000'), [{ path: 'new.txt', status: 'R' }])
 })
 
 test('parseStatusZ：R 条目空路径时跳过但原路径字段仍被消费', () => {
   assert.deepEqual(parseStatusZ('R  \u0000old.txt\u0000'), [])
+})
+
+test('parseStatusZ：冲突条目（UU）归一化为 M', () => {
+  assert.deepEqual(parseStatusZ('UU app/conflict.js\u0000'), [
+    { path: 'app/conflict.js', status: 'M' },
+  ])
 })
 
 test('stripRepoPrefix：空前缀原样返回', () => {
@@ -147,6 +158,45 @@ test('stripRepoPrefix：裁剪 cwd 前缀并丢弃 cwd 外路径', () => {
     'inner.txt',
     'sub2/x.txt',
   ])
+})
+
+test('stripRepoPrefix：支持结构化条目 { path, status }', () => {
+  const items = [
+    { path: 'sub/inner.txt', status: 'M' },
+    { path: 'root.txt', status: 'M' },
+    { path: 'sub/sub2/x.txt', status: 'A' },
+  ]
+  assert.deepEqual(stripRepoPrefix(items, 'sub/'), [
+    { path: 'inner.txt', status: 'M' },
+    { path: 'sub2/x.txt', status: 'A' },
+  ])
+})
+
+test('fileIcon：4 类扩展名映射，未知归其他', () => {
+  assert.equal(fileIcon('src/client.js'), '⌨️')
+  assert.equal(fileIcon('src/a.tsx'), '⌨️')
+  assert.equal(fileIcon('README.md'), '📝')
+  assert.equal(fileIcon('docs/images/a.PNG'), '🖼️') // 大小写不敏感
+  assert.equal(fileIcon('package.json'), '📄')
+  assert.equal(fileIcon('data.sqlite'), '📄')
+  assert.equal(fileIcon('.env.example'), '📄') // 隐藏文件
+})
+
+test('statusLetter：M/A/D/R 原样，未识别兜底 M', () => {
+  assert.equal(statusLetter('M'), 'M')
+  assert.equal(statusLetter('A'), 'A')
+  assert.equal(statusLetter('D'), 'D')
+  assert.equal(statusLetter('R'), 'R')
+  assert.equal(statusLetter('X'), 'M')
+  assert.equal(statusLetter(undefined), 'M')
+})
+
+test('stripStatusSuffix：剥离尾部状态字母，无标记原样返回', () => {
+  assert.equal(stripStatusSuffix('src/client.js M'), 'src/client.js')
+  assert.equal(stripStatusSuffix('src/client.js A'), 'src/client.js')
+  assert.equal(stripStatusSuffix('src/client.js'), 'src/client.js')
+  assert.equal(stripStatusSuffix('docs/计划 M'), 'docs/计划')
+  assert.equal(stripStatusSuffix('a b.txt'), 'a b.txt')
 })
 
 test('filterFiles：未提交变更优先，其次非隐藏，最后隐藏', () => {

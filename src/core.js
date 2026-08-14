@@ -118,10 +118,13 @@ export function matchRules(rules, rel, isDir) {
 }
 
 /**
- * 解析 `git status --porcelain -z` 输出为变更文件路径列表。
+ * 解析 `git status --porcelain -z` 输出为变更文件列表（含归一化状态码）。
  * 每条 `<XY> <path>\0`；重命名/复制（R/C）占两个字段：真实 git -z 格式为
  * `R  NEW\0OLD\0`（**新路径在前**、原路径在后），取当前条目（新路径），
  * 原路径字段直接跳过。路径含空格等特殊字符时依然精确（-z 不做引号转义）。
+ *
+ * 状态码归一化（客户端用于行尾字母标记）：
+ *   `??` 未跟踪 → A；X/Y 任一侧 A → A、D → D、R/C → R；其余（M/U/T/冲突）→ M。
  */
 export function parseStatusZ(text) {
   const dirty = []
@@ -130,13 +133,24 @@ export function parseStatusZ(text) {
     const entry = parts[i]
     if (entry === '') continue
     const code = entry[0]
+    const x = entry[1]
     if (code === 'R' || code === 'C') {
       const path = entry.slice(3)
-      if (path !== '') dirty.push(path)
+      if (path !== '') dirty.push({ path, status: 'R' })
       i += 1 // 跳过原路径字段（纯路径段，无状态码，不能被误当条目）
-    } else {
+    } else if (code === '?' && x === '?') {
       const path = entry.slice(3)
-      if (path !== '') dirty.push(path)
+      if (path !== '') dirty.push({ path, status: 'A' })
+    } else {
+      // XY 两字符后是分隔空格：X=index 状态（entry[0]），Y=worktree 状态（entry[1]）
+      let status = 'M'
+      for (const s of [code, entry[1]]) {
+        if (s === 'A') { status = 'A'; break }
+        if (s === 'D') { status = 'D'; break }
+        if (s === 'R' || s === 'C') { status = 'R'; break }
+      }
+      const path = entry.slice(3)
+      if (path !== '') dirty.push({ path, status })
     }
   }
   return dirty
@@ -147,10 +161,49 @@ export function parseStatusZ(text) {
  * 输出仓库根相对路径，与 git ls-files 的 cwd 相对不对称；prefix 来自
  * `git rev-parse --show-prefix`，含尾部斜杠，如 `sub/`）。
  * 不在 prefix 之下的路径（cwd 外）直接丢弃。
+ * 元素可为 string（路径）或 { path, ... }（结构化条目），裁剪后保持原形态。
  */
 export function stripRepoPrefix(paths, prefix) {
   if (prefix === '') return paths
-  return paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length))
+  return paths
+    .map((item) => {
+      const path = typeof item === 'string' ? item : item.path
+      if (!path.startsWith(prefix)) return null
+      const rel = path.slice(prefix.length)
+      return typeof item === 'string' ? rel : { ...item, path: rel }
+    })
+    .filter((x) => x !== null)
+}
+
+/**
+ * 文件类型图标（4 类 emoji，按扩展名映射；DSH 菜单 icon 为纯文本渲染）。
+ * 代码 / 文档 / 图片 / 其他；未知扩展名与隐藏文件归「其他」。
+ */
+const FILE_ICONS = { code: '⌨️', doc: '📝', image: '🖼️', other: '📄' }
+const ICON_EXTS = {
+  js: 'code', ts: 'code', tsx: 'code', jsx: 'code', mjs: 'code', cjs: 'code',
+  kt: 'code', java: 'code', py: 'code', go: 'code', rs: 'code',
+  c: 'code', cpp: 'code', h: 'code', sh: 'code', bat: 'code', ps1: 'code',
+  md: 'doc', txt: 'doc', rst: 'doc',
+  png: 'image', jpg: 'image', jpeg: 'image', svg: 'image', webp: 'image', gif: 'image', ico: 'image',
+}
+export function fileIcon(relPath) {
+  const ext = relPath.slice(relPath.lastIndexOf('.') + 1).toLowerCase()
+  return FILE_ICONS[ICON_EXTS[ext]] ?? FILE_ICONS.other
+}
+
+/** 变更状态 → 行尾字母（未识别状态兜底 M）。 */
+const STATUS_LETTERS = { M: 'M', A: 'A', D: 'D', R: 'R' }
+export function statusLetter(status) {
+  return STATUS_LETTERS[status] ?? 'M'
+}
+
+/**
+ * 剥离 description 尾部的变更标记（` 空格+大写字母`），恢复干净路径用于插入。
+ * onPick 使用：展示时 description 为 `路径 M`，插入前剥离。
+ */
+export function stripStatusSuffix(text) {
+  return String(text).replace(/ [MARD]$/, '')
 }
 
 /**

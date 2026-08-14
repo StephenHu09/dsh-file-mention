@@ -20,7 +20,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 
 ## 常用命令
 
-- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（35 用例）+ **集成测试（18 用例，真实 git）**
+- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（40 用例）+ **集成测试（18 用例，真实 git）**
 - `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数，秒级）
 - `npm run test:it` —— node --test 跑 test/host.integration.test.js（模拟开发场景，真实 git + 真实 fs，约 20-30s）
 
@@ -33,7 +33,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 ## 强制性规则
 
 ### 1. 版本号
-- 保持 **0.1.x 递增**（当前 0.1.11 → 下一 0.1.12），**禁止跳到 0.2.x**
+- 保持 **0.1.x 递增**（当前 0.1.12 → 下一 0.1.13），**禁止跳到 0.2.x**
 - 每次版本提交前必须完成下方 2/3/4 项
 
 ### 2. 构建不变式（scripts/build.mjs）
@@ -44,7 +44,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 35 用例）—— 纯函数
+- `test/core.test.js`（node:test，当前 40 用例）—— 纯函数
 - `test/host.integration.test.js`（node:test，当前 18 用例）—— host 集成：独立临时 git 仓库 + 真实 git/fs，模拟新建/修改/重命名/删除/子目录/忽略/回退/缓存场景；**每次版本提交前跑 npm run check 必须全绿**
 - 修改 `src/core.js` 必须同步补/改测试；修改 `src/host.js` 涉及列表行为时必须同步补/改集成测试（先复现场景再改代码）
 - 集成测试注意：host 缓存为**模块级共享**，同一仓库多实例会命中旧缓存——需要多状态的用例拆成独立仓库/独立用例
@@ -76,7 +76,7 @@ git tag v0.1.x && git push origin v0.1.x
 npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
-# 版本递增：0.1.x（当前 0.1.11 → 下一 0.1.12）；每次发布前 npm run check + 同步安装目录
+# 版本递增：0.1.x（当前 0.1.12 → 下一 0.1.13）；每次发布前 npm run check + 同步安装目录
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
@@ -118,7 +118,8 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
   git 不可用时降级为 .gitignore 解析 + 全量扫描。
 - src/client.js —— Client 半体：inject: inputTriggers，注册 `@` 源（order 4, 组名 file）。
   客户端按工作区 cwd 共享缓存 + stale-while-revalidate（TTL 30s，@ 零等待）；
-  warm 钩子会话创建时预取。
+  warm 钩子会话创建时预取；4 类类型图标（core.fileIcon）+ 行尾变更字母（core.statusLetter，
+  onPick 用 core.stripStatusSuffix 剥离）；dirty 兼容旧版 Host string[]。
 - scripts/build.mjs —— 剥离 export/import 后把 core.js 内联进两个产物：
   lib/index.js（ESM 具名导出 name/inject/apply）、lib/client.js（`__ModuleLoader__.load`
   经典脚本 + CJS factory）。产物零外部依赖。
@@ -135,6 +136,6 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 ## 当前状态（2026-08-14 会话快照）
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
-- 工作树干净；lib/ 与 src/ 同步；测试 35 单测 + 18 集成全通过；版本 0.1.11
+- 工作树干净；lib/ 与 src/ 同步；测试 40 单测 + 18 集成全通过；版本 0.1.12
 - **已发布**：npm registry 最新 0.1.11（官方源）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.11 已推送）
 - 已知限制与故障恢复见 README.md 与 docs/recovery.md

@@ -11,7 +11,7 @@
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
  */
-import { filterFiles } from './core.js'
+import { filterFiles, fileIcon, statusLetter, stripStatusSuffix } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
@@ -29,7 +29,10 @@ function apply(ctx) {
     const obj = value !== null && typeof value === 'object' ? value : {}
     return {
       files: Array.isArray(obj.files) ? obj.files : [],
-      dirty: Array.isArray(obj.dirty) ? obj.dirty : [],
+      // 新版 Host：dirty 为 [{ path, status }]；兼容旧版 Host 的 string[]（视为未跟踪）
+      dirty: Array.isArray(obj.dirty)
+        ? obj.dirty.map((d) => (typeof d === 'string' ? { path: d, status: 'A' } : d))
+        : [],
       cwd: typeof obj.cwd === 'string' ? obj.cwd : undefined,
     }
   }
@@ -101,14 +104,18 @@ function apply(ctx) {
     async candidates(session, { query, signal }) {
       const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
-      return filterFiles(files, query, 100, new Set(dirty)).map((f) => ({
+      const dirtySet = new Set(dirty.map((d) => d.path))
+      const statusOf = new Map(dirty.map((d) => [d.path, d.status]))
+      return filterFiles(files, query, 100, dirtySet).map((f) => ({
         name: f.slice(f.lastIndexOf('/') + 1),
-        description: f,
-        icon: '\ud83d\udcc4',
+        // 变更文件在行尾（description 为行尾元素 flex:1）追加状态字母；
+        // onPick 剥离尾部标记后插入，保证模型拿到的是干净路径
+        description: statusOf.has(f) ? f + ' ' + statusLetter(statusOf.get(f)) : f,
+        icon: fileIcon(f),
       }))
     },
     onPick({ candidate }) {
-      return { text: '@' + candidate.description + ' ' }
+      return { text: '@' + stripStatusSuffix(candidate.description) + ' ' }
     },
   }
 

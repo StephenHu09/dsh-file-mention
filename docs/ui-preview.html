@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>@ 文件菜单 UI 优化 · 真实方案演示</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212b; --line: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff;
+    --m: #e8b339; --a: #4cc38a; --d: #e06666; --r: #5b9dff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    padding: 40px 24px 60px; line-height: 1.5;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 24px; font-weight: 600; letter-spacing: .3px; }
+  header .sub { color: var(--muted); margin-top: 6px; font-size: 14px; }
+  .badges { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); background: var(--panel);
+  }
+  .badge b { color: var(--text); font-weight: 600; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+
+  .col {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+  }
+  .col-head {
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .col-head .title { font-size: 15px; font-weight: 600; }
+  .col-head .tag { font-size: 12px; color: var(--muted); }
+
+  .inputbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+    background: var(--panel2);
+  }
+  .inputbar .at { color: var(--accent); font-weight: 700; font-size: 16px; }
+  .inputbar input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  .inputbar input::placeholder { color: #565e6e; }
+
+  .menu { padding: 6px; min-height: 340px; }
+  .item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 8px; cursor: default;
+  }
+  .item:hover { background: rgba(91, 157, 255, 0.14); }
+  .item .icon {
+    font-size: 14px; width: 26px; text-align: center; flex: none;
+    color: var(--muted);
+  }
+  .item .meta { flex: 1; min-width: 0; }
+  .item .name { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .path { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .item .mark {
+    font-size: 11px; font-weight: 600; margin-left: 6px; letter-spacing: .5px;
+    color: #b8a05c; opacity: .85;
+  }
+  .mark.a { color: #7fb596; } .mark.d { color: #c08585; } .mark.r { color: #7fa3c9; }
+
+  .note { color: #565e6e; font-size: 11.5px; padding: 8px 14px; border-top: 1px solid var(--line); }
+
+  section.legend { margin-top: 26px; }
+  section.legend h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  }
+  .card h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .card p { font-size: 12.5px; color: var(--muted); }
+  .card .mini { margin-top: 10px; font-size: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; margin: 3px 4px 3px 0; }
+  .chip .ic { color: var(--muted); }
+  .chip code { font-size: 11px; color: var(--muted); }
+  .warn {
+    margin-top: 14px; padding: 10px 14px; border: 1px solid rgba(232,179,57,.35);
+    background: rgba(232,179,57,.08); border-radius: 10px; font-size: 12.5px; color: #d8c9a3;
+  }
+  .warn b { color: #e8b339; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>@ 文件菜单 UI 优化 · 真实可实现方案</h1>
+    <div class="sub">文本符号图标 + 变更标记（name 前缀）—— 基于 DSH 菜单组件实际渲染能力（icon/name/description 纯文本）</div>
+    <div class="badges">
+      <span class="badge">实现位置：<b>客户端 client.js 为主</b>，Host 仅扩展 dirty 状态码</span>
+      <span class="badge">选中色 / 右侧徽标 / SVG 图标：<b>组件不支持</b>，见页尾说明</span>
+    </div>
+  </header>
+
+  <div class="cols">
+    <div class="col">
+      <div class="col-head"><span class="title">当前（v0.1.11）</span><span class="tag">📄 千篇一律 · 无变更信息</span></div>
+      <div class="inputbar"><span class="at">@</span><input id="q" placeholder="输入过滤…" autocomplete="off"></div>
+      <div class="menu" id="menu-old"></div>
+      <div class="note">所有文件同一个 📄；无法一眼看出哪些刚被修改。</div>
+    </div>
+    <div class="col">
+      <div class="col-head"><span class="title">优化后</span><span class="tag">类型符号 + 变更标记</span></div>
+      <div class="inputbar"><span class="at">@</span><input id="q2" placeholder="同上联动" autocomplete="off"></div>
+      <div class="menu" id="menu-new"></div>
+      <div class="note">主行文件名前带 <b>M/A/D/R</b> 彩色标记（未提交变更）；图标为类型符号。选中插入仍是干净路径。</div>
+    </div>
+  </div>
+
+  <section class="legend">
+    <h2>方案细节</h2>
+    <div class="legend-grid">
+
+      <div class="card">
+        <h3>① 类型图标（4 类 emoji）</h3>
+        <p>DSH 菜单 icon 字段为纯文本渲染，emoji 是文本且跨平台渲染稳定；按扩展名映射为 4 类：</p>
+        <div class="mini" id="icon-legend"></div>
+        <p style="margin-top:8px">代码含常见编程语言与脚本扩展名；文档为 .md/.txt/.rst；图片为常见位图/矢量格式；其余全部归「其他」。</p>
+      </div>
+
+      <div class="card">
+        <h3>② 变更标记（行尾字母）</h3>
+        <p>菜单不渲染 hint 字段；description 是行尾元素（flex:1），在其尾部追加低饱和状态字母（M/A/D/R）：</p>
+        <div class="mini">
+          <span class="chip"><b class="mark" style="color:#b8a05c">M</b> 修改</span>
+          <span class="chip"><b class="mark" style="color:#7fb596">A</b> 新增 / 未跟踪</span>
+          <span class="chip"><b class="mark" style="color:#c08585">D</b> 已删除（暂存）</span>
+          <span class="chip"><b class="mark" style="color:#7fa3c9">R</b> 重命名</span>
+        </div>
+        <p style="margin-top:8px">真实实现：description 尾部追加 <code> M</code>（同色），onPick 插入前用正则剥离尾部字母，保证插入的仍是干净路径。</p>
+      </div>
+
+      <div class="card">
+        <h3>③ 不可行的项（组件限制）</h3>
+        <p>调研 DSH 菜单组件源码后确认以下设计无法在真实菜单实现：</p>
+        <div class="mini">
+          <div style="margin:2px 0">✗ SVG 线条图标 —— icon 为纯文本渲染</div>
+          <div style="margin:2px 0">✗ 右侧状态徽标 —— hint 字段不渲染</div>
+          <div style="margin:2px 0">✗ 浅蓝选中色 —— 高亮由组件 CSS 控制</div>
+          <div style="margin:2px 0">✗ 路径截断 —— description 即插入值</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="warn"><b>说明：</b>本页为真实渲染效果的模拟（菜单底色/字体/选中样式仍由 DSH 组件决定，此处仅示意数据呈现）。演示页 <code>docs/ui-preview.html</code> 中的 SVG 线条图标方案因组件限制无法落地，故转为文本符号方案。</div>
+  </section>
+
+</div>
+
+<script>
+// ---- 模拟数据（排序：未提交变更优先 → 非隐藏目录 → 隐藏） ----
+const FILES = [
+  { path: 'src/client.js',            status: 'M', ext: 'js'    },
+  { path: 'src/host.js',              status: 'M', ext: 'js'    },
+  { path: 'src/core.js',              status: null, ext: 'js'   },
+  { path: 'src/components/chat/input/MessageComposer.tsx', status: null, ext: 'tsx' },
+  { path: 'src/api/new-endpoint.ts',  status: 'A', ext: 'ts'    },
+  { path: 'src/utils/helpers.js',     status: null, ext: 'js'   },
+  { path: 'test/core.test.js',        status: null, ext: 'js', test: true },
+  { path: 'test/host.integration.test.js', status: 'A', ext: 'js', test: true },
+  { path: 'docs/architecture.md',     status: null, ext: 'md'   },
+  { path: 'docs/images/example.png',  status: null, ext: 'png'  },
+  { path: 'config/settings.yaml',     status: 'M', ext: 'yaml'  },
+  { path: 'package.json',             status: null, ext: 'json', pkg: true },
+  { path: 'scripts/build.mjs',        status: null, ext: 'mjs'  },
+  { path: 'README.md',                status: 'A', ext: 'md'    },
+  { path: 'assets/logo.svg',          status: null, ext: 'svg'  },
+  { path: 'deploy/deploy.sh',         status: null, ext: 'sh'   },
+  { path: '.env.example',             status: null, ext: 'env', hidden: true },
+  { path: 'data/metrics.sqlite',      status: null, ext: 'sqlite' },
+];
+
+// 类型图标：只区分 4 类（代码 / 文档 / 图片 / 其他），emoji 跨平台渲染稳定
+const ICONS = { code: '⌨️', doc: '📝', image: '🖼️', file: '📄' };
+const ICON_BY_EXT = {
+  js: 'code', ts: 'code', tsx: 'code', jsx: 'code', kt: 'code', java: 'code',
+  py: 'code', go: 'code', rs: 'code', c: 'code', cpp: 'code', h: 'code',
+  mjs: 'code', sh: 'code', bat: 'code', ps1: 'code', m: 'code',
+  md: 'doc', txt: 'doc', rst: 'doc',
+  png: 'image', jpg: 'image', jpeg: 'image', svg: 'image', webp: 'image', gif: 'image', ico: 'image',
+};
+const MARK = { M: 'M', A: 'A', D: 'D', R: 'R' };
+
+function iconOf(f) {
+  return ICONS[ICON_BY_EXT[f.ext]] || ICONS.file;
+}
+
+function rank(f) {
+  if (f.status) return 0;
+  if (f.hidden) return 2;
+  return 1;
+}
+
+function filter(q) {
+  const s = q.trim().toLowerCase();
+  if (!s) return FILES;
+  return FILES.filter((f) =>
+    f.path.toLowerCase().includes(s) || f.path.split('/').pop().toLowerCase().includes(s),
+  ).sort((a, b) => rank(a) - rank(b) || (a.path < b.path ? -1 : 1));
+}
+
+function render(q, old) {
+  const items = filter(q).slice(0, 12);
+  const el = document.getElementById(old ? 'menu-old' : 'menu-new');
+  el.innerHTML = '';
+  for (const f of items) {
+    const it = document.createElement('div');
+    it.className = 'item';
+    const icon = old ? '📄' : iconOf(f);
+    const mark = !old && f.status ? `<span class="mark ${f.status.toLowerCase()}">${MARK[f.status]}</span>` : '';
+    it.innerHTML =
+      `<span class="icon">${icon}</span>` +
+      `<span class="meta"><div class="name">${f.path.split('/').pop()}</div><div class="path">${f.path}${mark}</div></span>`;
+    el.appendChild(it);
+  }
+}
+
+const q1 = document.getElementById('q');
+const q2 = document.getElementById('q2');
+let syncLock = false;
+function sync(src, dst) {
+  if (syncLock) return;
+  syncLock = true;
+  dst.value = src.value;
+  render(src.value, false);
+  render(src.value, true);
+  syncLock = false;
+}
+q1.addEventListener('input', () => { sync(q1, q2); });
+q2.addEventListener('input', () => { sync(q2, q1); });
+render('', false);
+render('', true);
+
+// 图例
+const legend = [
+  ['代码', 'code', '.js .ts .kt .java .py .go .sh'],  ['文档', 'doc', '.md .txt .rst'],
+  ['图片', 'image', '.png .jpg .svg .webp .gif'],
+  ['其他', 'file', '配置/测试/数据/未知…'],
+];
+document.getElementById('icon-legend').innerHTML = legend
+  .map(([name, key, exts]) => `<span class="chip"><span class="ic">${ICONS[key]}</span> ${name} <code>${exts}</code></span>`)
+  .join('');
+</script>
+</body>
+</html>

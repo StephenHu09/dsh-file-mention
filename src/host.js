@@ -348,9 +348,9 @@ function apply(ctx) {
         const statusText = await runGit(ctx, cwd, ['status', '--porcelain', '-z'])
         if (statusText !== undefined) {
           // status 输出仓库根相对路径（与 ls-files 不对称）：按 repoPrefix 裁剪为
-          // cwd 相对，cwd 外的变更条目直接丢弃
+          // cwd 相对，cwd 外的变更条目直接丢弃；条目为 { path, status }
           dirty = stripRepoPrefix(
-            parseStatusZ(statusText).filter((p) => p !== '' && !p.endsWith('/')), // 丢弃 `?? dir/` 折叠死条目
+            parseStatusZ(statusText).filter((d) => d.path !== '' && !d.path.endsWith('/')), // 丢弃 `?? dir/` 折叠死条目
             repoPrefix,
           )
           gitDirtyCache.set(cwd, { dirty: [...dirty], at: Date.now() })
@@ -389,9 +389,9 @@ function apply(ctx) {
       }
 
       // 1d) 未跟踪文件并入主列表（新文件无需 git add 即可 @ 引用），并标记为变更
-      //     优先——dirty 只参与客户端排序、不新增条目，所以两处都要合并。
+      //     优先（status: 'A'）——dirty 只参与客户端排序/行尾标记，不新增 files 条目。
       const seenAll = new Set(files)
-      const dirtySet = new Set(dirty)
+      const dirtySet = new Set(dirty.map((d) => d.path))
       for (const p of untracked) {
         if (p === '' || p.endsWith('/')) continue
         if (!seenAll.has(p)) {
@@ -400,7 +400,7 @@ function apply(ctx) {
         }
         if (!dirtySet.has(p)) {
           dirtySet.add(p)
-          dirty.push(p)
+          dirty.push({ path: p, status: 'A' })
         }
       }
 
@@ -441,7 +441,7 @@ function apply(ctx) {
       if (deleted.length > 0) {
         const gone = new Set(deleted)
         files = files.filter((p) => !gone.has(p))
-        dirty = dirty.filter((p) => !gone.has(p))
+        dirty = dirty.filter((d) => !gone.has(d.path))
       }
 
       files = files.filter((p) => p !== '' && !p.endsWith('/')).slice(0, CAP).sort()

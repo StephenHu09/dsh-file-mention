@@ -138,6 +138,10 @@ function createApp(sessionCwd, fsImpl = realFs) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/** dirty 为 [{ path, status }]，断言路径存在性/状态码。 */
+const hasPath = (dirty, p) => dirty.some((d) => d.path === p)
+const statusOf = (dirty, p) => (dirty.find((d) => d.path === p) || {}).status
+
 // ============ 文件生命周期 ============
 
 test('新建文件（新目录）：无需 git add 即可 @ 引用，且按未提交变更置顶', async (t) => {
@@ -150,7 +154,8 @@ test('新建文件（新目录）：无需 git add 即可 @ 引用，且按未�
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('docs/images/new.png'), `files 应含 docs/images/new.png，实际: ${files.join(',')}`)
-  assert.ok(dirty.includes('docs/images/new.png'), 'dirty 应含新建文件（变更优先）')
+  assert.ok(hasPath(dirty, 'docs/images/new.png'), 'dirty 应含新建文件（变更优先）')
+  assert.equal(statusOf(dirty, 'docs/images/new.png'), 'A', '新建文件状态码应为 A')
 })
 
 test('新建文件（已跟踪目录）：同样入列', async (t) => {
@@ -163,7 +168,7 @@ test('新建文件（已跟踪目录）：同样入列', async (t) => {
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('src/new.js'))
-  assert.ok(dirty.includes('src/new.js'))
+  assert.ok(hasPath(dirty, 'src/new.js'))
 })
 
 test('修改文件（unstaged）：files 与 dirty 均含', async (t) => {
@@ -176,7 +181,8 @@ test('修改文件（unstaged）：files 与 dirty 均含', async (t) => {
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('app/main.js'))
-  assert.ok(dirty.includes('app/main.js'))
+  assert.ok(hasPath(dirty, 'app/main.js'))
+  assert.equal(statusOf(dirty, 'app/main.js'), 'M', '修改文件状态码应为 M')
 })
 
 test('修改文件（staged）：files 与 dirty 均含', async (t) => {
@@ -190,7 +196,8 @@ test('修改文件（staged）：files 与 dirty 均含', async (t) => {
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('app/main.js'))
-  assert.ok(dirty.includes('app/main.js'))
+  assert.ok(hasPath(dirty, 'app/main.js'))
+  assert.equal(statusOf(dirty, 'app/main.js'), 'M', 'staged 修改状态码应为 M')
 })
 
 test('重命名（git mv staged）：dirty 取新路径、旧路径不残留', async (t) => {
@@ -203,8 +210,9 @@ test('重命名（git mv staged）：dirty 取新路径、旧路径不残留', a
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('new file.txt'), 'files 应含新路径')
-  assert.ok(dirty.includes('new file.txt'), 'dirty 应含新路径（未提交变更优先）')
-  assert.ok(!dirty.includes('old.txt'), 'dirty 不应含旧路径')
+  assert.ok(hasPath(dirty, 'new file.txt'), 'dirty 应含新路径（未提交变更优先）')
+  assert.equal(statusOf(dirty, 'new file.txt'), 'R', '重命名状态码应为 R')
+  assert.ok(!hasPath(dirty, 'old.txt'), 'dirty 不应含旧路径')
 })
 
 test('重命名（工作区 mv unstaged）：新路径入列且可读，旧路径剔除', async (t) => {
@@ -218,8 +226,9 @@ test('重命名（工作区 mv unstaged）：新路径入列且可读，旧路�
   const { files, dirty } = await app.call()
   assert.ok(files.includes('renamed.txt'), 'files 应含新路径（未跟踪合并）')
   assert.ok(!files.includes('old.txt'), 'files 不应含旧路径（工作区已删除）')
-  assert.ok(dirty.includes('renamed.txt'), 'dirty 应含新路径')
-  assert.ok(!dirty.includes('old.txt'), 'dirty 不应含已删除的旧路径')
+  assert.ok(hasPath(dirty, 'renamed.txt'), 'dirty 应含新路径')
+  assert.equal(statusOf(dirty, 'renamed.txt'), 'A', '工作区重命名新路径按未跟踪 A 标记')
+  assert.ok(!hasPath(dirty, 'old.txt'), 'dirty 不应含已删除的旧路径')
 })
 
 test('删除（git rm staged）：不再出现在 files 列表', async (t) => {
@@ -232,9 +241,10 @@ test('删除（git rm staged）：不再出现在 files 列表', async (t) => {
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(!files.includes('bye.txt'), 'files 不应含已删除文件（index 已移除）')
-  // 已知行为（待决）：dirty 仍含 staged-delete 的 `D ` 条目（幽灵路径）。
-  // 客户端只对 files 中的路径做 rank，该条目无用户可见影响。
-  // 若决定清理：组装末尾 dirty = dirty.filter(p => fileSet.has(p))。
+  // staged delete（`D `）：dirty 保留 { path, status: 'D' } 条目（语义完整的变更记录）；
+  // 该路径不在 files，客户端不展示、不影响排序。
+  assert.ok(hasPath(dirty, 'bye.txt'), 'dirty 保留 staged 删除记录（D）')
+  assert.equal(statusOf(dirty, 'bye.txt'), 'D', '删除状态码应为 D')
 })
 
 test('删除（手动 unstaged）：从 files 与 dirty 剔除', async (t) => {
@@ -247,7 +257,7 @@ test('删除（手动 unstaged）：从 files 与 dirty 剔除', async (t) => {
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(!files.includes('bye.txt'), 'files 不应含已删除文件（ls-files -d 剔除）')
-  assert.ok(!dirty.includes('bye.txt'))
+  assert.ok(!hasPath(dirty, 'bye.txt'))
 })
 
 // ============ 路径多样性 ============
@@ -279,9 +289,9 @@ test('子目录会话：只列 cwd 下文件，dirty 按 cwd 裁剪（不泄漏�
   assert.ok(files.includes('inner.txt'), 'files 应含 cwd 内文件（cwd 相对路径）')
   assert.ok(files.includes('sub2/deep.txt'), 'files 应含 cwd 下多级子目录文件')
   assert.ok(!files.includes('root.txt'), 'files 不应含 cwd 外文件')
-  assert.ok(dirty.includes('inner.txt'), 'dirty 应含 cwd 内修改（--show-prefix 裁剪）')
-  assert.ok(!dirty.includes('root.txt'), 'dirty 不应含 cwd 外变更')
-  assert.ok(dirty.every((p) => !p.startsWith('sub/')), 'dirty 不应残留仓库根相对前缀')
+  assert.ok(hasPath(dirty, 'inner.txt'), 'dirty 应含 cwd 内修改（--show-prefix 裁剪）')
+  assert.ok(!hasPath(dirty, 'root.txt'), 'dirty 不应含 cwd 外变更')
+  assert.ok(dirty.every((d) => !d.path.startsWith('sub/')), 'dirty 不应残留仓库根相对前缀')
 })
 
 test('子目录会话（大小写变体 cwd）：同样正确', async (t) => {
@@ -295,7 +305,7 @@ test('子目录会话（大小写变体 cwd）：同样正确', async (t) => {
   const app = createApp(upperSub)
   const { files, dirty } = await app.call()
   assert.deepEqual(files, ['keep.txt'])
-  assert.deepEqual(dirty, ['keep.txt'])
+  assert.deepEqual(dirty, [{ path: 'keep.txt', status: 'M' }])
 })
 
 // ============ 配置与降级 ============
@@ -364,7 +374,7 @@ test('空 git 仓库（仅 init 未提交）：未跟踪文件正常入列', asy
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('first.txt'))
-  assert.ok(dirty.includes('first.txt'))
+  assert.ok(hasPath(dirty, 'first.txt'))
 })
 
 // ============ 缓存时效与一致性 ============
