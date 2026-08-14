@@ -11,22 +11,23 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 ┌─ 浏览器 ──────────────────────────────┐      ┌─ DSH Host ──────────────────────────┐
 │ 输入框 @ → inputTriggers 检测          │      │  ctx.sessions → 会话 cwd            │
 │   → file 源 candidates()              │ HTTP │  git ls-files -c → 跟踪文件         │
-│   → POST /file-mention/list ──────────┼─────▶│  .aiinclude 扫描 → 重新纳入文件      │
-│   → 过滤/展示/选中插入 @路径           │◀─────┼─ 返回 { files: [...] }              │
-│ 模型读到 @路径 → read 工具读取          │      │                                     │
+│   → POST /file-mention/list ──────────┼─────▶│  git ls-files -o → 未跟踪非忽略文件  │
+│   → 过滤/展示/选中插入 @路径           │◀─────┼─ 返回 { files, dirty, cwd }         │
+│ 模型读到 @路径 → read 工具读取          │      │  .aiinclude 扫描 → 重新纳入文件      │
 └────────────────────────────────────────┘      └─────────────────────────────────────┘
 ```
 
 ## 关键设计决策
 
-### 1. 只列 git 跟踪文件
+### 1. git 驱动的文件清单（跟踪 + 未跟踪非忽略）
 
-- 用 `git ls-files -c` 而非全量目录扫描：
+- 用 `git ls-files -c`（跟踪）∪ `git ls-files -o --exclude-standard`（未跟踪且未被忽略）而非全量目录扫描：
   - `.gitignore` 由 git 自行应用，零重复实现；
-  - 编译产物（`build/`、`.gradle/` 等）与未跟踪文件（`.codebuddy/`、`.vscode/` 等）自动排除；
+  - 编译产物（`build/`、`.gradle/` 等）自动排除；
   - 输出即仓库相对路径，天然稳定。
-- 会话 cwd 位于仓库子目录时，将仓库相对路径转换为 cwd 相对路径（`rev-parse --show-toplevel` + 前缀裁剪）。
-- **降级路径**：git 不可用/非仓库时，解析 `.gitignore`（实现 gitignore 匹配子集）后全量扫描。此时未跟踪的非忽略文件会混入——文档中已注明。
+- **为什么必须单独取未跟踪文件**：`git status --porcelain` 会把整个未跟踪目录折叠成一条 `?? dir/`（目录项而非文件项），且 Host 末尾还会过滤掉以 `/` 结尾的条目——新建目录里的新文件从此消失，既进不了 `dirty` 也进不了 `files`；`ls-files -o --exclude-standard` 输出单个文件路径，天然解决折叠问题。未跟踪文件并入 `files`（可直接 @ 引用，无需 `git add`）并同时并入 `dirty`（客户端按未提交变更优先排序，dirty 只参与排序、不新增条目）。
+- 会话 cwd 位于仓库子目录时，将仓库相对路径转换为 cwd 相对路径（`rev-parse --show-toplevel` + 前缀裁剪），跟踪/未跟踪/变更集三条路径共用同一逻辑。
+- **降级路径**：git 不可用/非仓库时，解析 `.gitignore`（实现 gitignore 匹配子集）后全量扫描。此时未跟踪的非忽略文件本就混入——与 git 模式行为一致。
 
 ### 2. `.aiinclude` 重新纳入
 
@@ -65,7 +66,7 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 |------|-----|------|
 | 仓库根（rev-parse） | 60s | 几乎不变；git init 后最多 60s 识别 |
 | git 跟踪列表（ls-files） | 15s | 变化慢；回退扫描（无 git）结果同样缓存 |
-| git 变更集（status） | 5s | 变化最快，TTL 最短 |
+| git 变更集 + 未跟踪（status / ls-files -o） | 5s | 变化最快，TTL 最短 |
 | `.aiinclude` 规则 | 60s | 根 + 嵌套发现合并结果 |
 
 全部按 cwd 内存缓存；陈旧上限即各 TTL，均短于客户端 30s SWR 缓存，整体一致性由客户端兜底。

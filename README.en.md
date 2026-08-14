@@ -6,8 +6,8 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 
 > npm package `@hucj/dsh-file-mention` (personal scoped package); plugin composition row id: `file-mention`.
 
-- **Git-tracked files only**: natively respects `.gitignore` — build artifacts and untracked files are excluded automatically
-- **`.aiinclude` re-inclusion**: files that are ignored/untracked but needed by AI (e.g. project docs) can be explicitly added back to the scan scope
+- **Git-driven filtering**: tracked files + untracked non-ignored files (new files are `@`-mentionable without `git add`); natively respects `.gitignore` — build artifacts are excluded automatically
+- **`.aiinclude` re-inclusion**: files that are ignored but needed by AI (e.g. project docs) can be explicitly added back to the scan scope
 - **Zero external dependencies**: both Host and Client halves are hand-written code with a hand-written build script
 
 ## Features
@@ -17,11 +17,11 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | `@` input trigger | Same `inputTriggers` mechanism as the `/` skill menu, `@pluginId`, `@subagent` — multiple sources coexist |
 | Real-time filter | Matches basename or full path (case-insensitive), up to 100 results shown |
 | Match ranking | **Exact match** (path/basename equal) → **prefix match** → substring match (within group: changed-first, then alphabetical) |
-| Default ordering | **Uncommitted changes first** (git status: staged/unstaged/deleted/untracked) → non-hidden dirs → hidden dirs (alphabetical within group) |
-| Git-tracked filtering | Via `git ls-files`; automatically skips `.gitignore`-ignored items, build artifacts, untracked files |
+| Default ordering | **Uncommitted changes first** (git status changeset + untracked new files) → non-hidden dirs → hidden dirs (alphabetical within group) |
+| Git-tracked filtering | `git ls-files -c` tracked files ∪ `-o --exclude-standard` untracked non-ignored files; new files appear automatically, build artifacts stay out |
 | `.aiinclude` | gitignore syntax, re-includes ignored files/dirs (dir rules inherit to children; nested per-directory config supported) |
 | Fallback mode | When git is unavailable / not a repo: falls back to `.gitignore` parsing + full scan |
-| Caching | Client: shared per workspace **cwd** + **stale-while-revalidate** (30s TTL: old list shown instantly, background refresh — `@` never waits); Host: layered git cache (repo root 60s / tracked 15s / dirty 5s); warm prefetch on session creation |
+| Caching | Client: shared per workspace **cwd** + **stale-while-revalidate** (30s TTL: old list shown instantly, background refresh — `@` never waits); Host: layered git cache (repo root 60s / tracked 15s / dirty & untracked 5s); warm prefetch on session creation |
 | Pruned traversal | `.aiinclude` only walks dirs that may match (measured: 16ms for `doc/` vs 822ms full tree) |
 | Safety bounds | 10,000 file cap, depth 32, heavy dirs skipped |
 
@@ -143,7 +143,7 @@ docs/
 Type @ in the browser input
   → inputTriggers fires the file source
   → POST /file-mention/list ({ sessionId })
-  → Host: git ls-files (tracked) ∪ .aiinclude scan (re-included)
+  → Host: git ls-files (tracked ∪ untracked non-ignored) ∪ .aiinclude scan (re-included)
   → returns relative-path list → filter & display → pick inserts @path
   → model receives the path text and reads the file with its file tools
 ```

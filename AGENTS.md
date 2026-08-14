@@ -32,7 +32,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 ## 强制性规则
 
 ### 1. 版本号
-- 保持 **0.1.x 递增**（当前 0.1.8 → 下一 0.1.9），**禁止跳到 0.2.x**
+- 保持 **0.1.x 递增**（当前 0.1.9 → 下一 0.1.10），**禁止跳到 0.2.x**
 - 每次版本提交前必须完成下方 2/3/4 项
 
 ### 2. 构建不变式（scripts/build.mjs）
@@ -73,7 +73,7 @@ git tag v0.1.x && git push origin v0.1.x
 npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
-# 版本递增：0.1.x（当前 0.1.9 → 下一 0.1.10）；每次发布前 npm run check + 同步安装目录
+# 版本递增：0.1.x（当前 0.1.10 → 下一 0.1.11）；每次发布前 npm run check + 同步安装目录
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
@@ -90,7 +90,7 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 ### 8. 性能边界（改动需实测论证）
 - 遍历安全阀：`MAX_DEPTH = 32`、`CAP = 10000`（src/host.js）
-- 缓存 TTL 分层：仓库根 60s / 跟踪列表 15s / 变更集 5s / extras walk 15s / `.aiinclude` 规则 60s / 客户端列表 30s（SWR）
+- 缓存 TTL 分层：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪 5s / extras walk 15s / `.aiinclude` 规则 60s / 客户端列表 30s（SWR）
 - 缓存键均为工作区 cwd（客户端旧版 Host 退化按 sessionId）
 - 会话不在内存注册表时回退 `sessionPersistence.inspect()` 解析 cwd（60s 缓存）
 
@@ -105,8 +105,8 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
   compileRules / lastMatchRule / matchRules / filterFiles / flattenNestedRules /
   parseStatusZ / dirMayLeadToMatch。
 - src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
-  git ls-files 跟踪文件（天然遵守 .gitignore）+ .aiinclude 重新纳入 + 未提交变更集；
-  分层缓存：仓库根 60s / 跟踪列表 15s / 变更集 5s / extras 15s / .aiinclude 规则 60s；
+  git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ .aiinclude 重新纳入 + 未提交变更集；
+  分层缓存：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪 5s / extras 15s / .aiinclude 规则 60s；
   git 不可用时降级为 .gitignore 解析 + 全量扫描。
 - src/client.js —— Client 半体：inject: inputTriggers，注册 `@` 源（order 4, 组名 file）。
   客户端按工作区 cwd 共享缓存 + stale-while-revalidate（TTL 30s，@ 零等待）；
@@ -127,6 +127,6 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 ## 当前状态（2026-08-14 会话快照）
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
-- 工作树干净；lib/ 与 src/ 同步；测试 30/30 通过；版本 0.1.8
+- 工作树干净；lib/ 与 src/ 同步；测试 30/30 通过；版本 0.1.10
 - npm 未发布（registry 404）；GitHub 仓库未创建
 - 已知限制与故障恢复见 README.md 与 docs/recovery.md

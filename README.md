@@ -6,8 +6,8 @@ DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在�
 
 > npm 包名 `@hucj/dsh-file-mention`（个人 scoped 包）；插件组合行 id 为 `file-mention`。
 
-- **只列 git 跟踪的文件**：天然遵守 `.gitignore`，编译产物、未跟踪文件自动排除
-- **`.aiinclude` 重新纳入**：被忽略/未跟踪、但 AI 需要访问的文件（如项目文档）可显式加回扫描范围
+- **git 驱动过滤**：跟踪文件 + 未跟踪且未被忽略的新文件（新建文件无需 `git add` 即可 @ 引用）；天然遵守 `.gitignore`，编译产物自动排除
+- **`.aiinclude` 重新纳入**：被忽略、但 AI 需要访问的文件（如项目文档）可显式加回扫描范围
 - **零外部依赖**：Host/Client 双端均为纯手写代码 + 手写构建脚本
 
 ## 功能特性
@@ -17,11 +17,11 @@ DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在�
 | `@` 输入触发 | 与技能 `/` 菜单、`@pluginId`、`@子代理` 同一套 `inputTriggers` 机制，多源并存 |
 | 实时过滤 | 按文件名或完整路径匹配（大小写不敏感），最多展示 100 条 |
 | 命中排序 | **精确匹配**（路径/basename 全等）→ **前缀匹配** → 子串匹配（组内再按变更优先 + 字母序） |
-| 默认排序 | **未提交变更优先**（git status，含 staged/unstaged/删除/未跟踪）→ 非隐藏目录 → 隐藏目录（组内字母序） |
-| git 跟踪过滤 | 通过 `git ls-files` 获取，自动跳过 `.gitignore` 忽略项、编译产物、未跟踪文件 |
+| 默认排序 | **未提交变更优先**（git status 变更集 + 未跟踪新文件）→ 非隐藏目录 → 隐藏目录（组内字母序） |
+| git 跟踪过滤 | `git ls-files -c` 跟踪文件 ∪ `-o --exclude-standard` 未跟踪非忽略文件；新建文件自动出现，编译产物不进来 |
 | `.aiinclude` | gitignore 语法，把忽略目录/文件重新纳入（目录规则含子级继承，支持子目录嵌套配置） |
 | 回退模式 | git 不可用/非仓库时自动降级为 `.gitignore` 解析 + 全量扫描 |
-| 缓存 | 客户端按**工作区 cwd 共享** + **stale-while-revalidate**（TTL 30s 过期先返回旧列表、后台刷新，`@` 永远零等待）；Host 侧 git 结果分层缓存（仓库根 60s / 跟踪列表 15s / 变更 5s）；会话创建时后台预热（warm 钩子） |
+| 缓存 | 客户端按**工作区 cwd 共享** + **stale-while-revalidate**（TTL 30s 过期先返回旧列表、后台刷新，`@` 永远零等待）；Host 侧 git 结果分层缓存（仓库根 60s / 跟踪列表 15s / 变更与未跟踪 5s）；会话创建时后台预热（warm 钩子） |
 | 剪枝遍历 | `.aiinclude` 只遍历可能命中的目录（doc/ 场景实测 16ms vs 全树 822ms） |
 | 安全边界 | 文件总数上限 10000、遍历深度 32、跳过重型目录 |
 
@@ -143,7 +143,7 @@ docs/
 浏览器输入框输入 @
   → inputTriggers 触发 file 源
   → POST /file-mention/list（{ sessionId }）
-  → Host：git ls-files（跟踪文件）∪ .aiinclude 扫描（重新纳入）
+  → Host：git ls-files（跟踪 ∪ 未跟踪非忽略）∪ .aiinclude 扫描（重新纳入）
   → 返回相对路径列表 → 过滤展示 → 选中插入 @路径
   → 模型收到路径文本，用文件工具读取
 ```

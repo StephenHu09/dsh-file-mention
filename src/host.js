@@ -3,7 +3,8 @@
  *
  * 通过 `webServer` 注册 `/file-mention/list` HTTP 路由：
  *   - 解析会话工作区（ctx.sessions）
- *   - 通过 git ls-files 列出跟踪文件（天然遵守 .gitignore，排除编译产物与未跟踪文件）
+ *   - 通过 git ls-files 列出跟踪文件 + 未跟踪非忽略文件（两者都天然遵守
+ *     .gitignore，排除编译产物；新建文件无需 git add 即可 @ 引用）
  *   - 读取工作区根目录 .aiinclude，把被忽略但 AI 需要的文件重新纳入
  *   - git 不可用/非仓库时回退为 .gitignore 解析 + 全量扫描
  *
@@ -37,6 +38,7 @@ const GIT_DIRTY_TTL = 5_000
 const gitRootCache = new Map() // cwd -> { root, cwdRel, at }
 const gitTrackedCache = new Map() // cwd -> { files, at }
 const gitDirtyCache = new Map() // cwd -> { dirty, at }
+const gitUntrackedCache = new Map() // cwd -> { files, at }（未跟踪非忽略文件，与 dirty 同 TTL）
 const extrasCache = new Map() // cwd -> { extras, at }（.aiinclude 收集结果，与 tracked 同 TTL）
 
 /** 读取 TTL 缓存条目；未过期返回条目，过期或缺失返回 null。 */
@@ -345,6 +347,43 @@ function apply(ctx) {
             .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
             .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
           gitDirtyCache.set(cwd, { dirty, at: Date.now() })
+        }
+      }
+
+      // 1c) 未跟踪且未被忽略的文件（新建文件）：git status 会把整个未跟踪目录折叠成
+      //     一条 `?? dir/`，再经下方末尾 '/' 过滤后彻底丢失，新文件永远进不了菜单；
+      //     git ls-files -o --exclude-standard 输出单个文件路径，且天然遵守
+      //     .gitignore（编译产物不进来）。与 dirty 同 TTL（新建/删除变化最快）。
+      const untrackedEntry = cacheGet(gitUntrackedCache, cwd, GIT_DIRTY_TTL, now)
+      let untracked = []
+      if (untrackedEntry !== null) {
+        untracked = untrackedEntry.files
+      } else if (repoRoot !== '') {
+        const untrackedText = await runGit(ctx, cwd, ['ls-files', '-o', '--exclude-standard'])
+        if (untrackedText !== undefined) {
+          untracked = untrackedText
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter((l) => l !== '')
+            .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
+            .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+          gitUntrackedCache.set(cwd, { files: untracked, at: Date.now() })
+        }
+      }
+
+      // 1d) 未跟踪文件并入主列表（新文件无需 git add 即可 @ 引用），并标记为变更
+      //     优先——dirty 只参与客户端排序、不新增条目，所以两处都要合并。
+      const seenAll = new Set(files)
+      const dirtySet = new Set(dirty)
+      for (const p of untracked) {
+        if (p === '' || p.endsWith('/')) continue
+        if (!seenAll.has(p)) {
+          seenAll.add(p)
+          files.push(p)
+        }
+        if (!dirtySet.has(p)) {
+          dirtySet.add(p)
+          dirty.push(p)
         }
       }
 
