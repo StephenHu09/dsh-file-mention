@@ -36,6 +36,9 @@
   },
   "license": "MIT",
   "author": "hucj",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "dsh",
     "deepseek-harness",
