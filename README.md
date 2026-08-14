@@ -1,6 +1,8 @@
-# dsh-file-mention
+# @hucj/dsh-file-mention
 
 DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在聊天输入框输入 `@`，按输入字符实时过滤并选择工作区文件，选中后插入 `@相对路径`，模型即可直接读取该文件——类似 Codex CLI / Claude Code CLI 的 `@file` 引用体验。
+
+> npm 包名 `@hucj/dsh-file-mention`（个人 scoped 包）；插件组合行 id 为 `file-mention`。
 
 - **只列 git 跟踪的文件**：天然遵守 `.gitignore`，编译产物、未跟踪文件自动排除
 - **`.aiinclude` 重新纳入**：被忽略/未跟踪、但 AI 需要访问的文件（如项目文档）可显式加回扫描范围
@@ -26,7 +28,7 @@ DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在�
 ### 方式一：npm 发布后（推荐）
 
 ```bash
-dsh plugin --profile web add dsh-file-mention
+dsh plugin --profile web add @hucj/dsh-file-mention
 ```
 
 ### 方式二：本地路径（开发调试）

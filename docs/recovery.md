@@ -26,7 +26,7 @@
      disabled: true
    ```
 
-   > `id` 是组合行的 id（报错信息里 `failed to apply loader entry file-mention (dsh-file-mention)` 中 `file-mention` 就是 id；括号内是包名）。
+   > `id` 是组合行的 id（报错信息里 `failed to apply loader entry file-mention (@hucj/dsh-file-mention)` 中 `file-mention` 就是 id；括号内是包名）。
 
 2. 带补丁启动：
 
@@ -39,9 +39,9 @@
 **验证技巧**：先 `dsh web --dump-config --patch <文件>` 查看组合树（只打印、不启动），确认目标行带上了 `disabled: true`：
 
 ```
-# == dsh-file-mention, patched by D:\disable-plugin.yml
+# == @hucj/dsh-file-mention, patched by D:\disable-plugin.yml
 - id: file-mention
-  name: dsh-file-mention
+  name: @hucj/dsh-file-mention
   disabled: true
 ```
 
@@ -66,7 +66,7 @@
          "@deepseek-ai/dsh-base",
          "@deepseek-ai/dsh-web-app",
          "@linxin666/dsh-web-ui-all",
-         "dsh-file-mention"        ← 删除这一行
+         "@hucj/dsh-file-mention"        ← 删除这一行
        ]
      }
    }
@@ -77,7 +77,7 @@
    ```json
    "dependencies": {
      "@linxin666/dsh-web-ui-all": "0.1.10",
-     "dsh-file-mention": "file:D:/..."   ← 可选删除
+     "@hucj/dsh-file-mention": "file:D:/..."   ← 可选删除
    }
    ```
 
@@ -90,7 +90,7 @@
 dsh 正常启动后（或配合方法一），卸载包并清理 node_modules：
 
 ```bash
-dsh plugin --profile web remove dsh-file-mention
+dsh plugin --profile web remove @hucj/dsh-file-mention
 ```
 
 > 该命令转发给 pnpm remove，清理依赖与 node_modules；

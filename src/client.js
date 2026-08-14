@@ -13,7 +13,7 @@
  */
 import { filterFiles } from './core.js'
 
-const name = 'dsh-file-mention'
+const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
 
 function apply(ctx) {

@@ -13,7 +13,7 @@ import {
   compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
 } from './core.js'
 
-const name = 'dsh-file-mention'
+const name = '@hucj/dsh-file-mention'
 const inject = ['sessions', 'webServer']
 
 /** 请求体大小上限（防御超大请求）。 */
