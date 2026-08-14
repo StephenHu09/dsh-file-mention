@@ -4,7 +4,8 @@
  * 注册 '@' 输入触发源（与技能 / 菜单、@pluginId、@子代理 同一套 inputTriggers 机制）：
  *   - 输入 @ 弹出 file 分组，按文件名/路径实时过滤
  *   - 选中后插入 `@相对路径 ` 到输入框，模型看到路径后直接读取文件
- *   - 列表经 Host 的 /file-mention/list HTTP 路由获取，客户端 30 秒缓存
+ *   - 列表经 Host 的 /file-mention/list HTTP 路由获取；缓存按工作区 cwd 共享
+ *     （同工作区多会话只扫描一次，30 秒 TTL），旧版 Host 无 cwd 时退化为按会话缓存
  *
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
@@ -15,13 +16,20 @@ const name = 'dsh-file-mention'
 const inject = ['inputTriggers']
 
 function apply(ctx) {
-  const fetches = new Map()
+  // 共享缓存：键为工作区 cwd（同工作区多会话只扫描一次，30s TTL）；
+  // 旧版 Host 响应无 cwd 时退化为按 sessionId 缓存。
+  const fetches = new Map() // cwd|sessionId -> { promise, at }
+  const sessionCwd = new Map() // sessionId -> cwd（首次响应后得知）
+  const pending = new Map() // sessionId -> promise（在途请求去重）
   const TTL = 30000
 
   const fetchFiles = (sessionId) => {
-    const existing = fetches.get(sessionId)
-    if (existing !== undefined && Date.now() - existing.at < TTL) return existing.promise
-    if (existing !== undefined) fetches.delete(sessionId)
+    const key = sessionCwd.get(sessionId) ?? sessionId
+    const hit = fetches.get(key)
+    if (hit !== undefined && Date.now() - hit.at < TTL) return hit.promise
+    if (hit !== undefined) fetches.delete(key)
+    const inflight = pending.get(sessionId)
+    if (inflight !== undefined) return inflight
     const promise = fetch('/file-mention/list', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -32,22 +40,25 @@ function apply(ctx) {
         return response.json()
       })
       .then((value) => {
+        const obj = value !== null && typeof value === 'object' ? value : {}
         return {
-          files: value !== null && typeof value === 'object' && Array.isArray(value.files) ? value.files : [],
-          dirty: value !== null && typeof value === 'object' && Array.isArray(value.dirty) ? value.dirty : [],
+          files: Array.isArray(obj.files) ? obj.files : [],
+          dirty: Array.isArray(obj.dirty) ? obj.dirty : [],
+          cwd: typeof obj.cwd === 'string' ? obj.cwd : undefined,
         }
       })
       .catch((error) => {
         console.error('[file-mention] host list failed:', error)
-        return []
+        return { files: [], dirty: [], cwd: undefined }
       })
-    fetches.set(sessionId, { promise, at: Date.now() })
+    pending.set(sessionId, promise)
     promise.then(
-      () => {},
-      () => {
-        const current = fetches.get(sessionId)
-        if (current !== undefined && current.promise === promise) fetches.delete(sessionId)
+      (value) => {
+        pending.delete(sessionId)
+        if (value.cwd !== undefined) sessionCwd.set(sessionId, value.cwd)
+        fetches.set(value.cwd ?? sessionId, { promise, at: Date.now() })
       },
+      () => pending.delete(sessionId),
     )
     return promise
   }

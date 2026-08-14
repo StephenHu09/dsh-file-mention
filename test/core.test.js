@@ -4,7 +4,9 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ } from '../src/core.js'
+import {
+  compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
+} from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
   const rules = compileRules(['', '  ', '# comment', '*.log', ''])
@@ -150,6 +152,68 @@ test('filterFiles：输入查询词时命中项也按变更优先', () => {
 test('filterFiles：无 dirty 时保持非隐藏优先（A 方案回归）', () => {
   const files = ['zzz.md', '.agents/skills/a.md', 'app/Main.kt', 'doc/计划.md']
   assert.deepEqual(filterFiles(files, ''), ['app/Main.kt', 'doc/计划.md', 'zzz.md', '.agents/skills/a.md'])
+})
+
+test('filterFiles：精确匹配（路径或 basename）排最前', () => {
+  const files = ['app/MainActivity.kt', 'app/MainActivityHelper.kt', 'app/MyMainActivity.kt']
+  // 完整路径精确 → 唯一命中
+  assert.deepEqual(filterFiles(files, 'app/MainActivity.kt'), ['app/MainActivity.kt'])
+  // basename 精确（score 0）优先于子串（score 2）；Helper 不含 .kt 子串被过滤
+  assert.deepEqual(filterFiles(files, 'MainActivity.kt'), [
+    'app/MainActivity.kt',
+    'app/MyMainActivity.kt',
+  ])
+})
+
+test('filterFiles：相关性优先于 dirty（精确非变更 > 子串变更）', () => {
+  const files = ['app/MyActivity.java', 'app/Activity.java', 'app/AnotherActivity.java']
+  const dirty = new Set(['app/MyActivity.java'])
+  assert.deepEqual(filterFiles(files, 'Activity.java', 100, dirty), [
+    'app/Activity.java', // 精确 basename（score 0，非 dirty）
+    'app/MyActivity.java', // 子串（score 2）但 dirty
+    'app/AnotherActivity.java', // 子串（score 2）
+  ])
+})
+
+test('filterFiles：前缀匹配排在子串前', () => {
+  const files = ['doc/MainActivity.txt', 'app/MainActivityHelper.kt', 'app/MyMainActivity.kt', 'doc/main.md']
+  assert.deepEqual(filterFiles(files, 'main'), [
+    'app/MainActivityHelper.kt', // 前缀，组内码位序：'a' < 'd'
+    'doc/MainActivity.txt',
+    'doc/main.md', // 'M'(0x4D) < 'm'(0x6D)
+    'app/MyMainActivity.kt', // 子串最后
+  ])
+})
+
+test('flattenNestedRules：basename 规则展开为直接子级 + 任意深度', () => {
+  assert.deepEqual(flattenNestedRules('doc', ['*.log']), ['doc/*.log', 'doc/**/*.log'])
+  assert.deepEqual(flattenNestedRules('doc', ['!secret.md']), ['!doc/secret.md', '!doc/**/secret.md'])
+})
+
+test('flattenNestedRules：目录/锚定/斜杠模式加前缀；忽略注释空行', () => {
+  assert.deepEqual(flattenNestedRules('doc', ['build/']), ['doc/build/', 'doc/**/build/'])
+  assert.deepEqual(flattenNestedRules('doc', ['/build']), ['doc/build'])
+  assert.deepEqual(flattenNestedRules('doc', ['sub/build/**']), ['doc/sub/build/**'])
+  assert.deepEqual(flattenNestedRules('doc/sub', ['**/x.md']), ['doc/sub/**/x.md', 'doc/sub/x.md'])
+  assert.deepEqual(flattenNestedRules('doc', ['', '# c', '  ']), [])
+})
+
+test('嵌套规则合并：展平后与根规则 last-match-wins（嵌套覆盖根，否定生效）', () => {
+  const rules = compileRules(['doc/', ...flattenNestedRules('doc', ['!private/'])])
+  assert.equal(matchRules(rules, 'doc', true), true)
+  // 嵌套 !private/ 在规则集尾部，覆盖根 doc/ 的继承（walk 层阻断）
+  assert.equal(matchRules(rules, 'doc/private', true), false)
+  assert.equal(matchRules(rules, 'doc/public', true), false)
+})
+
+test('嵌套展平规则可剪枝且按深度匹配（D/**/x 前缀放行 D 下目录）', () => {
+  const rules = compileRules(flattenNestedRules('doc', ['*.md']))
+  assert.equal(dirMayLeadToMatch(rules, 'doc'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'doc/sub'), true)
+  assert.equal(dirMayLeadToMatch(rules, 'app'), false)
+  assert.equal(matchRules(rules, 'doc/sub/a.md', false), true)
+  assert.equal(matchRules(rules, 'doc/sub/a.kt', false), false)
+  assert.equal(matchRules(rules, 'app/a.md', false), false)
 })
 
 test('dirMayLeadToMatch：basename 目录规则只放行同名目录', () => {

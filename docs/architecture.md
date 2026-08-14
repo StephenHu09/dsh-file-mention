@@ -41,7 +41,9 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 - `compileRules(lines)`：gitignore 语法子集（注释、否定 `!`、目录后缀 `/`、锚定 `/`、`*`/`?`/`**`、含斜杠 vs basename 语义）编译为正则规则；
 - `matchRules(rules, rel, isDir)`：最后匹配者生效（gitignore 语义）；
-- `filterFiles(files, query, limit)`：客户端菜单过滤（basename/路径、大小写不敏感、限量）。
+- `filterFiles(files, query, limit)`：客户端菜单过滤（basename/路径、大小写不敏感、限量）；
+  命中排序：精确（路径/basename 全等）→ 前缀 → 子串，组内再按 dirty → 非隐藏 → 隐藏 + 字母序；
+- `flattenNestedRules(dir, lines)`：嵌套 `.aiinclude` 规则展平为根相对（basename 模式展开为直接 + 跨段两条），与根规则合并后 last-match-wins。
 
 ### 4. 构建与打包
 
@@ -52,9 +54,17 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 ## 客户端缓存与失效
 
-- 每个会话一份列表缓存，TTL 30 秒；
+- 缓存键为**工作区 cwd**（响应携带 `cwd` 字段）：同工作区多会话共享一份列表，TTL 30 秒；
+  会话首次响应后记录其 cwd，旧版 Host（无 `cwd` 字段）退化为按 sessionId 缓存；
+- 同一会话在途请求去重（pending map），避免并发重复拉取；
 - 拉取失败回退空列表并允许下次重试；
 - 插件卸载/更新时通过 effect disposer 注销输入源并清空缓存。
+
+## Host 侧 `.aiinclude` 规则
+
+- 根 `.aiinclude` 存在时，全量发现子目录嵌套配置（跳过 `SKIP` 重型目录），展平后与根规则合并；
+- 合并结果按 cwd 内存缓存 60 秒（`aiMemo`），避免每次请求重复全量扫描；
+- 嵌套否定与遍历继承（`inheritDir`）自然协作：如根 `doc/` + `doc/.aiinclude: !private/` 可阻断 `doc/private` 的继承纳入。
 
 ## 安全与资源边界
 
@@ -64,7 +74,9 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 ## 后续计划（Backlog）
 
-- [ ] `.aiinclude` 支持嵌套目录多份（按目录层级合并，同 `.gitignore` 层级语义）
+- [x] `.aiinclude` 支持嵌套目录多份（按目录层级合并，同 `.gitignore` 层级语义）
+- [x] 命中排序：精确/前缀优先于子串（相关性 > 变更状态）
+- [x] 多会话共享缓存（按工作区 cwd，同工作区只扫描一次）
 - [ ] 可配置：`@` 选中后直接附加文件内容（小文件）或仅路径（大文件）
 - [ ] 按扩展名过滤开关（二进制/资源文件）
 - [ ] 菜单分组图标定制（依赖 DSH 侧图标枚举交付）

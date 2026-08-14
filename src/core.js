@@ -144,10 +144,14 @@ export function parseStatusZ(text) {
  * 按查询词过滤文件列表：匹配 basename 或完整路径（大小写不敏感）。
  * 客户端 @ 菜单的过滤逻辑，独立出来以便测试。
  *
- * 默认排序规则（空查询与命中项都适用，rank 升序 + 组内字母序）：
- *   0. git 未提交变更（dirty 集合内）
- *   1. 非隐藏目录（首段不以 . 开头）
- *   2. 隐藏目录
+ * 命中排序（score 升序 + rank 升序 + 组内字母序）：
+ *   score 0. 精确匹配（完整路径或 basename 与查询词完全相等）
+ *   score 1. 前缀匹配（完整路径或 basename 以查询词开头）
+ *   score 2. 子串匹配（其余命中项）
+ *   rank 0.  git 未提交变更（dirty 集合内）
+ *   rank 1.  非隐藏目录（首段不以 . 开头）
+ *   rank 2.  隐藏目录
+ * 空查询时 score 恒为 0，退化为纯 rank + 字母序（与历史行为一致）。
  */
 export function filterFiles(files, query, limit = 100, dirty) {
   const q = String(query || '').trim().toLowerCase()
@@ -157,6 +161,14 @@ export function filterFiles(files, query, limit = 100, dirty) {
     if (f.split('/')[0].startsWith('.')) return 2
     return 1
   }
+  const score = (f) => {
+    if (q === '') return 0
+    const lower = f.toLowerCase()
+    const base = f.slice(f.lastIndexOf('/') + 1).toLowerCase()
+    if (lower === q || base === q) return 0
+    if (base.startsWith(q) || lower.startsWith(q)) return 1
+    return 2
+  }
   let matches = files
   if (q !== '') {
     matches = files.filter((f) => {
@@ -164,8 +176,57 @@ export function filterFiles(files, query, limit = 100, dirty) {
       return base.includes(q) || f.toLowerCase().includes(q)
     })
   }
-  if (dirtySet !== undefined || q === '') {
-    matches = [...matches].sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
-  }
+  // 恒排序：空查询退化为 rank + 字母序（与历史行为一致），有查询词时 score 优先
+  matches = [...matches].sort(
+    (a, b) => score(a) - score(b) || rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0),
+  )
   return matches.slice(0, limit)
+}
+
+/**
+ * 将嵌套目录 `.aiinclude` 的规则行展平为「根相对」规则行，以便与根规则
+ * 合并成一个规则集（last-match-wins 天然实现层级覆盖：后读入的嵌套规则优先）。
+ *
+ * 语义对齐 gitignore：目录 D 下的规则相对 D 生效——
+ *   - 斜杠模式（`/x`、`x/y`、`x/`）：直接加 D 前缀；
+ *   - basename 文件模式（`x`）：展开为 `D/x`（直接子级）与 `D/**` 跨段形式（任意深度）；
+ *   - basename 目录模式（`x/`）：展开为 `D/x/` 与 `D/**` 跨段形式；
+ *   - `**` 前缀模式（如 `**` + `/x`）：额外补 `D/x`（gitignore 语义：匹配 D 本身及其下任意深度）；
+ *   - 取反 `!` 前缀保留，按行序参与 last-match-wins。
+ *
+ * @param {string} dir 嵌套文件所在目录（根相对，无首尾斜杠，如 `doc/sub`）
+ * @param {string[]} lines 该 .aiinclude 的原始行
+ * @returns {string[]} 展平后的规则行
+ */
+export function flattenNestedRules(dir, lines) {
+  const out = []
+  for (let raw of lines) {
+    raw = raw.trim()
+    if (raw === '' || raw.startsWith('#')) continue
+    let negate = ''
+    if (raw.startsWith('!')) {
+      negate = '!'
+      raw = raw.slice(1).trim()
+    }
+    if (raw === '') continue
+    const dirOnly = raw.endsWith('/')
+    if (dirOnly) raw = raw.slice(0, -1)
+    const anchored = raw.startsWith('/')
+    if (anchored) raw = raw.slice(1)
+    if (raw === '') continue
+    const base = dir + '/' + raw
+    if (anchored || raw.includes('/')) {
+      out.push(negate + base + (dirOnly ? '/' : ''))
+      if (raw.startsWith('**/')) {
+        out.push(negate + dir + '/' + raw.slice(3) + (dirOnly ? '/' : ''))
+      }
+    } else if (dirOnly) {
+      out.push(negate + base + '/')
+      out.push(negate + dir + '/**/' + raw + '/')
+    } else {
+      out.push(negate + base)
+      out.push(negate + dir + '/**/' + raw)
+    }
+  }
+  return out
 }

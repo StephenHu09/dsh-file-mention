@@ -9,7 +9,9 @@
  *
  * 构建时由 scripts/build.mjs 将 src/core.js 内联进来，产物无任何外部依赖。
  */
-import { compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ } from './core.js'
+import {
+  compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
+} from './core.js'
 
 const name = 'dsh-file-mention'
 const inject = ['sessions', 'webServer']
@@ -139,6 +141,68 @@ function json(res, value, status = 200) {
   res.end(JSON.stringify(value))
 }
 
+/** 嵌套 .aiinclude 规则合并结果的缓存 TTL（毫秒）。 */
+const AI_MEMO_TTL = 60_000
+/** 嵌套 .aiinclude 发现数量上限（防御性）。 */
+const AI_NESTED_CAP = 50
+/** 嵌套规则合并缓存：cwd → { at, rules }。 */
+const aiMemo = new Map()
+
+/**
+ * 全量遍历（仅跳过 SKIP 目录）发现各子目录中的 `.aiinclude` 文件，
+ * 返回其所在目录列表（根相对路径）。用于加载嵌套配置。
+ */
+async function discoverNestedAiinclude(fs, root) {
+  const dirs = []
+  const walk = async (target, relPath, level) => {
+    if (dirs.length >= AI_NESTED_CAP || level >= MAX_DEPTH) return
+    let entries
+    try {
+      entries = await fs.listDir(target)
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (dirs.length >= AI_NESTED_CAP) return
+      if (entry.type === 'directory') {
+        if (SKIP.has(entry.name)) continue
+        await walk(entry.target, relPath === '' ? entry.name : relPath + '/' + entry.name, level + 1)
+      } else if (entry.type === 'file' && entry.name === '.aiinclude') {
+        if (relPath !== '') dirs.push(relPath)
+      }
+    }
+  }
+  await walk(root, '', 0)
+  return dirs
+}
+
+/**
+ * 加载工作区的 .aiinclude 规则（根 + 嵌套，合并为单一规则集）。
+ *
+ * - 根 .aiinclude 不存在 → 返回 null（不启用 .aiinclude 逻辑，零开销）。
+ * - 根存在 → 全量发现嵌套 .aiinclude（SKIP 目录内的不读），规则展平为根相对
+ *   后按行序追加，last-match-wins 使嵌套规则覆盖根规则；`!` 否定同样参与，
+ *   与遍历继承逻辑（inheritDir）自然协作。
+ * - 结果按 cwd 内存缓存 AI_MEMO_TTL（60s），避免每次请求重复全量扫描。
+ */
+async function loadAiRules(fs, cwd, root) {
+  const memo = aiMemo.get(cwd)
+  if (memo !== undefined && Date.now() - memo.at < AI_MEMO_TTL) return memo.rules
+  const rootText = await readTextSafe(fs, cwd + '/.aiinclude')
+  const lines = []
+  if (rootText !== undefined) {
+    lines.push(...rootText.split(/\r?\n/))
+    const nestedDirs = await discoverNestedAiinclude(fs, root)
+    for (const dir of nestedDirs) {
+      const text = await readTextSafe(fs, cwd + '/' + dir + '/.aiinclude')
+      if (text !== undefined) lines.push(...flattenNestedRules(dir, text.split(/\r?\n/)))
+    }
+  }
+  const rules = lines.length > 0 ? compileRules(lines) : null
+  aiMemo.set(cwd, { at: Date.now(), rules })
+  return rules
+}
+
 function apply(ctx) {
   const handler = async (req, res) => {
     if (req.method !== 'POST') {
@@ -205,10 +269,9 @@ function apply(ctx) {
         files = await walkFiles(fs, root, (p) => !matchRules(rules, p, false), null)
       }
 
-      // 2) .aiinclude：重新纳入被忽略/未跟踪但 AI 需要的文件
-      const aiText = await readTextSafe(fs, cwd + '/.aiinclude')
-      if (aiText !== undefined) {
-        const aiRules = compileRules(aiText.split(/\r?\n/))
+      // 2) .aiinclude：重新纳入被忽略/未跟踪但 AI 需要的文件（支持子目录嵌套配置）
+      const aiRules = await loadAiRules(fs, cwd, root)
+      if (aiRules !== null) {
         const extras = await walkFiles(
           fs,
           root,
@@ -229,7 +292,8 @@ function apply(ctx) {
       }
 
       files = files.filter((p) => p !== '' && !p.endsWith('/')).slice(0, CAP).sort()
-      json(res, { files, dirty })
+      // cwd 用于客户端按工作区共享缓存（同工作区多会话只扫描一次）
+      json(res, { files, dirty, cwd })
     } catch (error) {
       console.error('[file-mention] list failed:', error)
       json(res, { files: [], dirty: [] })
