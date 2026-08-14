@@ -1,5 +1,7 @@
 # @hucj/dsh-file-mention
 
+[English](README.en.md) | 中文
+
 DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在聊天输入框输入 `@`，按输入字符实时过滤并选择工作区文件，选中后插入 `@相对路径`，模型即可直接读取该文件——类似 Codex CLI / Claude Code CLI 的 `@file` 引用体验。
 
 > npm 包名 `@hucj/dsh-file-mention`（个人 scoped 包）；插件组合行 id 为 `file-mention`。
@@ -31,15 +33,44 @@ DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在�
 dsh plugin --profile web add @hucj/dsh-file-mention
 ```
 
+> ⚠️ 该包尚未发布到 npm registry（`npm view @hucj/dsh-file-mention` 当前返回 404）；
+> 发布后此方式即可用，当前请用方式二。
+
 ### 方式二：本地路径（开发调试）
+
+先从源码**编译**（lib/ 是构建产物，随包发布，源码改动后必须重新构建再安装）：
+
+```bash
+git clone git@github.com:StephenHu09/dsh-file-mention.git   # 或使用已有源码目录
+cd dsh-file-mention
+npm install        # 仅开发依赖（构建/测试用；产物本身零外部依赖）
+npm run check      # 编译（src/ → lib/）+ 30 个单元测试
+```
+
+然后安装：
 
 ```bash
 dsh plugin --profile web add file:D:/path/to/dsh-file-mention
 ```
 
-安装后重启 dsh web（或热重载生效），在输入框输入 `@` 即可使用。
+`file:` 安装为**一次性拷贝**（非符号链接）：项目源码后续改动不会自动同步到安装目录，需要**重新编译后重新安装**（或手动同步 `lib/`、`package.json`、`README.md`、`cordis.patch.yml`）。
+
+安装后**重启 dsh web**（新 bundle 只在下次启动时加载），浏览器 **Ctrl+F5** 强刷，输入框输入 `@` 出现 file 分组即安装成功。
 
 > 注：`dsh.client.inject` 为空、插件自身 `inject: ['inputTriggers']` 声明硬依赖，宿主需已组装 `@deepseek-ai/dsh-client-ui-input-trigger`（标准 web 部署默认包含）。
+
+## 卸载
+
+```bash
+dsh plugin --profile web remove @hucj/dsh-file-mention
+```
+
+该命令自动完成三件事（实测验证）：
+1. 从 `dependencies` 删除依赖
+2. 从 `dsh.profile.bundles` 删除 bundle 行
+3. 删除 `node_modules/@hucj/dsh-file-mention` 安装目录
+
+之后**重启 dsh web** 生效。若想彻底清理项目缓存，可手动删除 `node_modules` 下的 `@hucj` 目录与 pnpm 缓存。
 
 ## `.aiinclude` 配置
 
@@ -62,7 +93,7 @@ build/generated/**
 | `!pattern` | 否定（最后匹配者生效） | `!doc/private/` |
 | `/pattern` | 锚定于工作区根 | `/build` |
 
-修改后 **30 秒内**（客户端缓存）或**刷新页面**生效。
+修改后数据在 **~90 秒内收敛**（Host 规则缓存 60s + 客户端列表 30s），刷新页面可加速客户端部分。
 
 ### 子目录嵌套配置
 
@@ -75,8 +106,7 @@ build/generated/**
 ```
 
 嵌套规则会展开为根相对规则并与根规则合并（后读入者优先，`!` 否定同样生效）。
-限制：需要**根 `.aiinclude` 存在**才触发嵌套发现；`node_modules` 等重型目录内的嵌套配置不读取；
-Host 侧规则缓存 60 秒（修改嵌套配置后最多 1 分钟生效）。
+限制：需要**根 `.aiinclude` 存在**才触发嵌套发现；`node_modules` 等重型目录内的嵌套配置不读取。
 
 ### 典型场景
 
@@ -108,6 +138,8 @@ docs/
   architecture.md   # 架构与设计说明
 ```
 
+> 维护规则（版本号策略、构建不变式、同步清单、提交规范）见 **[AGENTS.md](AGENTS.md)**。
+
 ## 架构摘要
 
 ```
@@ -123,21 +155,25 @@ docs/
 
 ## 发布
 
-### GitHub
+### GitHub（仓库已有完整历史，直接推送）
 
 ```bash
-git init && git add -A && git commit -m "feat: initial release"
-git remote add origin git@github.com:<you>/dsh-file-mention.git
+git remote add origin git@github.com:StephenHu09/dsh-file-mention.git
+git branch -M main
 git push -u origin main
-# 打标签
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.8 && git push origin v0.1.8
 ```
 
-### npm（可选，发布后即可 dsh plugin add 安装）
+### npm
 
 ```bash
-npm login
-npm publish
+npm login                  # 首次：npmjs.com 注册账号并开启 2FA
+npm publish                # 发布当前版本（版本号递增策略见 AGENTS.md）
+npm view @hucj/dsh-file-mention   # 验证发布成功
+
+# 更新版本：升版本号 → npm run check → npm publish
+# 撤销（发布后 72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
+# 标记弃用（推荐替代撤销）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
 
 ## 已知限制
@@ -161,7 +197,7 @@ npm publish
      disabled: true
    ```
 2. **永久移除（首选）**：编辑 `~/.dsh/profiles/web/package.json`，从 `dsh.profile.bundles` 删除该包行，重新启动
-3. **彻底清理**：`dsh plugin --profile web remove <包名>`
+3. **彻底清理**：`dsh plugin --profile web remove @hucj/dsh-file-mention`
 
 完整教程（含原理、验证技巧、FAQ、动态插件对比）：**[docs/recovery.md](docs/recovery.md)**
 
