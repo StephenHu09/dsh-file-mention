@@ -25,6 +25,14 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | Pruned traversal | `.aiinclude` only walks dirs that may match (measured: 16ms for `doc/` vs 822ms full tree) |
 | Safety bounds | 10,000 file cap, depth 32, heavy dirs skipped |
 
+### Demo
+
+Type `@` in the input box to open the workspace file menu: real-time basename/path filtering, uncommitted changes (including new files) ranked first; picking a file inserts `@relative/path` so the model can read it directly:
+
+![@ file mention demo](docs/images/example.png)
+
+> Screenshot above shows the menu in action; newly created (untracked) files are `@`-mentionable without `git add` (v0.1.10+).
+
 ## Installation
 
 ### Option 1: from npm (recommended)
