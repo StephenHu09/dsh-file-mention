@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
+  stripRepoPrefix,
 } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
@@ -125,6 +126,27 @@ test('parseStatusZ：重命名原路径字段被正确跳过，后随普通条�
   const text = 'R  b.txt\u0000a.txt\u0000 M c.txt\u0000C  d.txt\u0000e.txt\u0000?? f.txt\u0000'
   // R/C 取新路径并跳过原路径字段；` M`、`??` 按普通条目解析
   assert.deepEqual(parseStatusZ(text), ['b.txt', 'c.txt', 'd.txt', 'f.txt'])
+})
+
+test('parseStatusZ：R 条目在末尾（无原路径字段）不越界', () => {
+  // 真实 git 总会输出原路径字段，此处验证解析器的防御性
+  assert.deepEqual(parseStatusZ('R  new.txt\u0000'), ['new.txt'])
+})
+
+test('parseStatusZ：R 条目空路径时跳过但原路径字段仍被消费', () => {
+  assert.deepEqual(parseStatusZ('R  \u0000old.txt\u0000'), [])
+})
+
+test('stripRepoPrefix：空前缀原样返回', () => {
+  assert.deepEqual(stripRepoPrefix(['a.txt', 'sub/b.txt'], ''), ['a.txt', 'sub/b.txt'])
+})
+
+test('stripRepoPrefix：裁剪 cwd 前缀并丢弃 cwd 外路径', () => {
+  // git status 在子目录输出仓库根相对路径（如 sub/ 下看到 root.txt、sub/x.txt）
+  assert.deepEqual(stripRepoPrefix(['root.txt', 'sub/inner.txt', 'sub/sub2/x.txt'], 'sub/'), [
+    'inner.txt',
+    'sub2/x.txt',
+  ])
 })
 
 test('filterFiles：未提交变更优先，其次非隐藏，最后隐藏', () => {

@@ -20,7 +20,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 
 ## 常用命令
 
-- `npm run check` —— build（内联构建 src/ → lib/）+ test（31 用例）
+- `npm run check` —— build（内联构建 src/ → lib/）+ test（35 用例）
 - `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数）
 
 ### DSH agent 沙箱注意事项（Windows）
@@ -43,7 +43,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 31 用例）
+- `test/core.test.js`（node:test，当前 35 用例）
 - 修改 `src/core.js` 必须同步补/改测试；全部用例必须通过
 
 ### 4. 安装目录同步（每次版本提交必做）
@@ -98,7 +98,7 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 - 空响应（无 cwd 且空列表）不得写入客户端缓存（会粘 30s 导致 `@` 无反应）
 - filter-branch 的 env-filter 中 `$GIT_AUTHOR_DATE` 未被预置，改写时间戳必须用 `git show -s --format=%at` 取 epoch 计算
 - 块注释内禁止出现 `*/` 序列（如 `D/**/x/`），会提前终结注释导致语法错误
-- `git ls-files` / `git status` 在子目录 cwd 下输出**相对 cwd** 的路径，勿做仓库根前缀裁剪（v0.1.10 曾裁剪导致子目录会话列表全空）
+- `git ls-files`（-c/-o/-d）在子目录输出**相对 cwd** 的路径（勿裁剪）；但 `git status --porcelain` 在子目录输出**仓库根相对**路径——两者不对称（实测），dirty 必须按 `rev-parse --show-prefix` 裁剪（v0.1.10 统一裁剪 → ls-files 列表全空；v0.1.11 整体删除裁剪 → 子目录 dirty 失效）
 - `git status --porcelain -z` 重命名条目格式 `R  NEW\0OLD\0`（**新路径在前**），parseStatusZ 取当前条目并跳过原路径字段
 - git 默认 `core.quotepath=true`（Linux 会对非 ASCII 路径八进制转义），所有 git 调用统一加 `-c core.quotepath=false`
 - 已删除文件（index 有、工作区无）仍会被 `git ls-files -c` 列出，需 `git ls-files -d` 剔除，否则 @ 后模型读取失败
@@ -107,10 +107,10 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 - src/core.js —— gitignore 语法子集匹配器（纯函数、零依赖、可单测）：
   compileRules / lastMatchRule / matchRules / filterFiles / flattenNestedRules /
-  parseStatusZ / dirMayLeadToMatch。
+  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix。
 - src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
   git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ 已删除剔除（-d）+ .aiinclude 重新纳入 + 未提交变更集；
-  所有 git 调用带 -c core.quotepath=false；git 输出天然相对 cwd，无前缀裁剪；
+  所有 git 调用带 -c core.quotepath=false；ls-files 输出天然相对 cwd，status 输出仓库根相对（按 --show-prefix 裁剪）；
   分层缓存：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪+已删除 5s / extras 15s / .aiinclude 规则 60s；
   git 不可用时降级为 .gitignore 解析 + 全量扫描。
 - src/client.js —— Client 半体：inject: inputTriggers，注册 `@` 源（order 4, 组名 file）。
@@ -132,6 +132,6 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 ## 当前状态（2026-08-14 会话快照）
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
-- 工作树干净；lib/ 与 src/ 同步；测试 31/31 通过；版本 0.1.11
+- 工作树干净；lib/ 与 src/ 同步；测试 35/35 通过；版本 0.1.11
 - **已发布**：npm registry 最新 0.1.10（官方源）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.10 已推送）
 - 已知限制与故障恢复见 README.md 与 docs/recovery.md

@@ -12,6 +12,7 @@
  */
 import {
   compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
+  stripRepoPrefix,
 } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
@@ -35,10 +36,10 @@ const MAX_DEPTH = 32
 const GIT_ROOT_TTL = 60_000
 const GIT_TRACKED_TTL = 15_000
 const GIT_DIRTY_TTL = 5_000
-const gitRootCache = new Map() // cwd -> { root, at }
+const gitRootCache = new Map() // cwd -> { root, prefix, at }（prefix = rev-parse --show-prefix）
 const gitTrackedCache = new Map() // cwd -> { files, at }
 const gitDirtyCache = new Map() // cwd -> { dirty, at }
-const gitUntrackedCache = new Map() // cwd -> { files, at }（未跟踪非忽略文件，与 dirty 同 TTL）
+const gitUntrackedCache = new Map() // cwd -> { files, deleted, at }（未跟踪非忽略 + 已删除文件，与 dirty 同 TTL）
 const extrasCache = new Map() // cwd -> { extras, at }（.aiinclude 收集结果，与 tracked 同 TTL）
 
 /** 读取 TTL 缓存条目；未过期返回条目，过期或缺失返回 null。 */
@@ -292,26 +293,34 @@ function apply(ctx) {
       let files = []
       let dirty = []
 
-      // 1) git 跟踪文件：天然遵守 .gitignore，排除编译产物与未跟踪文件
+      // 1) git 跟踪文件：天然遵守 .gitignore，排除编译产物
       //    结果分层缓存（root 60s / tracked 15s / dirty 5s），TTL 内不重复跑 git 子进程；
       //    陈旧上限即 TTL，客户端侧 30s SWR 缓存比它更"旧"，因此整体一致性不受影响。
       const now = Date.now()
       const rootEntry = cacheGet(gitRootCache, cwd, GIT_ROOT_TTL, now)
       let repoRoot = ''
+      let repoPrefix = ''
       if (rootEntry !== null) {
         repoRoot = rootEntry.root
+        repoPrefix = rootEntry.prefix ?? ''
       } else {
-        const rootText = await runGit(ctx, cwd, ['rev-parse', '--show-toplevel'])
-        if (rootText !== undefined) repoRoot = norm(rootText.trim())
+        const rootText = await runGit(ctx, cwd, ['rev-parse', '--show-toplevel', '--show-prefix'])
+        if (rootText !== undefined) {
+          const lines = rootText.split(/\r?\n/)
+          repoRoot = norm((lines[0] ?? '').trim())
+          // 第二行：cwd 在仓库中的前缀（含尾部斜杠，如 `sub/`；仓库根为空）
+          repoPrefix = (lines[1] ?? '').trim()
+        }
         // 非仓库也缓存（root=''），60s 内不再重复探测；git init 后最多 60s 识别
-        gitRootCache.set(cwd, { root: repoRoot, at: now })
+        gitRootCache.set(cwd, { root: repoRoot, prefix: repoPrefix, at: now })
       }
 
-      // 注：git ls-files / git status 在 cwd 下运行，输出路径天然相对 cwd
-      // （子目录会话同样成立），因此无需任何仓库根前缀裁剪。
+      // 注：git ls-files（-c/-o/-d）在 cwd 下运行，输出路径天然相对 cwd（子目录
+      // 会话同样成立，无需裁剪）；而 git status --porcelain 在子目录输出**仓库根
+      // 相对**路径，dirty 必须按 repoPrefix 裁剪（见 1b）。
       const trackedEntry = cacheGet(gitTrackedCache, cwd, GIT_TRACKED_TTL, now)
       if (trackedEntry !== null) {
-        files = trackedEntry.files
+        files = [...trackedEntry.files]
       } else if (repoRoot !== '') {
         const trackedText = await runGit(ctx, cwd, ['ls-files', '-c'])
         if (trackedText !== undefined) {
@@ -319,26 +328,32 @@ function apply(ctx) {
             .split(/\r?\n/)
             .map((l) => l.trim())
             .filter((l) => l !== '')
-          gitTrackedCache.set(cwd, { files, at: Date.now() })
+          // 存副本：后续 1d/extras 的 push 不得污染缓存数组（否则已删/已改的
+          // untracked 会借 tracked 15s 缓存残留，超出自身 5s TTL）
+          gitTrackedCache.set(cwd, { files: [...files], at: Date.now() })
         }
       } else {
         // 回退：git 不可用/非仓库时，解析 .gitignore 后全量扫描（结果同样缓存 15s）
         const ignoreText = await readTextSafe(fs, cwd + '/.gitignore')
         const rules = compileRules(ignoreText !== undefined ? ignoreText.split(/\r?\n/) : [])
         files = await walkFiles(fs, root, (p) => !matchRules(rules, p, false), null)
-        gitTrackedCache.set(cwd, { files, at: Date.now() })
+        gitTrackedCache.set(cwd, { files: [...files], at: Date.now() })
       }
 
       // 1b) 未提交变更（staged + unstaged + 删除 + 未跟踪）：@ 默认排序优先展示
       const dirtyEntry = cacheGet(gitDirtyCache, cwd, GIT_DIRTY_TTL, now)
       if (dirtyEntry !== null) {
-        dirty = dirtyEntry.dirty
+        dirty = [...dirtyEntry.dirty]
       } else if (repoRoot !== '') {
         const statusText = await runGit(ctx, cwd, ['status', '--porcelain', '-z'])
         if (statusText !== undefined) {
-          dirty = parseStatusZ(statusText)
-            .filter((p) => p !== '' && !p.endsWith('/')) // 丢弃 `?? dir/` 折叠死条目
-          gitDirtyCache.set(cwd, { dirty, at: Date.now() })
+          // status 输出仓库根相对路径（与 ls-files 不对称）：按 repoPrefix 裁剪为
+          // cwd 相对，cwd 外的变更条目直接丢弃
+          dirty = stripRepoPrefix(
+            parseStatusZ(statusText).filter((p) => p !== '' && !p.endsWith('/')), // 丢弃 `?? dir/` 折叠死条目
+            repoPrefix,
+          )
+          gitDirtyCache.set(cwd, { dirty: [...dirty], at: Date.now() })
         }
       }
 
@@ -350,8 +365,8 @@ function apply(ctx) {
       let untracked = []
       let deleted = []
       if (untrackedEntry !== null) {
-        untracked = untrackedEntry.files
-        deleted = untrackedEntry.deleted ?? []
+        untracked = [...untrackedEntry.files]
+        deleted = [...(untrackedEntry.deleted ?? [])]
       } else if (repoRoot !== '') {
         const untrackedText = await runGit(ctx, cwd, ['ls-files', '-o', '--exclude-standard'])
         if (untrackedText !== undefined) {
@@ -369,7 +384,7 @@ function apply(ctx) {
                   .split(/\r?\n/)
                   .map((l) => l.trim())
                   .filter((l) => l !== '')
-          gitUntrackedCache.set(cwd, { files: untracked, deleted, at: Date.now() })
+          gitUntrackedCache.set(cwd, { files: [...untracked], deleted: [...deleted], at: Date.now() })
         }
       }
 

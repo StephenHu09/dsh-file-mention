@@ -22,7 +22,7 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | Deleted/renamed | Deleted files hidden automatically (`git ls-files -d`); renamed files (git mv) ranked as uncommitted changes |
 | `.aiinclude` | gitignore syntax, re-includes ignored files/dirs (dir rules inherit to children; nested per-directory config supported) |
 | Fallback mode | When git is unavailable / not a repo: falls back to `.gitignore` parsing + full scan |
-| Caching | Client: shared per workspace **cwd** + **stale-while-revalidate** (30s TTL: old list shown instantly, background refresh — `@` never waits); Host: layered git cache (repo root 60s / tracked 15s / dirty & untracked 5s); warm prefetch on session creation |
+| Caching | Client: shared per workspace **cwd** + **stale-while-revalidate** (30s TTL: old list shown instantly, background refresh — `@` never waits); Host: layered git cache (repo root 60s / tracked 15s / dirty, untracked & deleted 5s); warm prefetch on session creation |
 | Pruned traversal | `.aiinclude` only walks dirs that may match (measured: 16ms for `doc/` vs 822ms full tree) |
 | Safety bounds | 10,000 file cap, depth 32, heavy dirs skipped |
 
