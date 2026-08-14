@@ -78,7 +78,7 @@ npm run check   # 构建 + 测试
 ```
 src/
   core.js     # gitignore/.aiinclude 规则匹配核心（纯函数，可独立测试）
-  host.js     # Host 半体：git ls-files + .aiinclude 扫描（fileMention.list RPC）
+  host.js     # Host 半体：git ls-files + .aiinclude 扫描（/file-mention/list HTTP 路由）
   client.js   # Client 半体：@ 输入触发源（inputTriggers）
 scripts/
   build.mjs   # 构建：内联 core 并生成 lib/index.js（ESM）与 lib/client.js（__ModuleLoader__ 包装）
@@ -94,7 +94,7 @@ docs/
 ```
 浏览器输入框输入 @
   → inputTriggers 触发 file 源
-  → host.call('fileMention.list', { sessionId })
+  → POST /file-mention/list（{ sessionId }）
   → Host：git ls-files（跟踪文件）∪ .aiinclude 扫描（重新纳入）
   → 返回相对路径列表 → 过滤展示 → 选中插入 @路径
   → 模型收到路径文本，用文件工具读取
@@ -127,6 +127,20 @@ npm publish
 - `.aiinclude` 仅读取工作区根目录一份（不支持嵌套）
 - git 跟踪过滤依赖本机 git；无 git 时降级模式会包含未跟踪的非忽略文件
 - 客户端列表缓存 30 秒，扫描大仓库期间菜单可能短暂等待
+
+## 故障恢复：插件导致 dsh web 起不来怎么办
+
+`dsh web` 启动时会组合 profile 配置并执行插件 `apply`；若插件在启动阶段抛错，整个启动会失败。
+恢复思路：**在启动前移除/禁用出错的插件配置**（配置文件随时可编辑，不需要 dsh 运行）。
+
+1. 编辑 `~/.dsh/profiles/web/package.json`（用任意文本编辑器）：
+   - 从 `dsh.profile.bundles` 数组中**删除该包所在行**（这是导致启动失败的直接原因）
+   - 可选：同时从 `dependencies` 中删除该依赖
+2. 重新运行 `dsh web` → 正常启动
+3. 需要彻底清理时，再执行 `dsh plugin --profile web remove <包名>`（清理 node_modules）
+
+> 提示：动态插件（cordis_define/run）是运行时注入、不写入 profile 配置，出错用
+> `cordis_undefine` 即可，永远不会影响 dsh 启动。
 
 ## License
 

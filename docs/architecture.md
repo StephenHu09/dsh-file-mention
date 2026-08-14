@@ -5,13 +5,13 @@
 dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的既有扩展点实现"`@` 关联工作区文件"：
 
 - **Client 端**：注册一个 `@` 输入触发源（`inputTriggers`），这是技能 `/` 菜单、`@pluginId`、`@子代理` 所用的同一套机制，因此多源可共存于一个菜单。
-- **Host 端**：通过 Package-private RPC（`harness.handle` / `host.call`）向 Client 提供会话工作区的文件清单。
+- **Host 端**：通过 `webServer` 注册 `/file-mention/list` HTTP 路由，向 Client 提供会话工作区的文件清单。
 
 ```
 ┌─ 浏览器 ──────────────────────────────┐      ┌─ DSH Host ──────────────────────────┐
 │ 输入框 @ → inputTriggers 检测          │      │  ctx.sessions → 会话 cwd            │
-│   → file 源 candidates()              │ RPC  │  git ls-files -c → 跟踪文件         │
-│   → host.call('fileMention.list') ────┼─────▶│  .aiinclude 扫描 → 重新纳入文件      │
+│   → file 源 candidates()              │ HTTP │  git ls-files -c → 跟踪文件         │
+│   → POST /file-mention/list ──────────┼─────▶│  .aiinclude 扫描 → 重新纳入文件      │
 │   → 过滤/展示/选中插入 @路径           │◀─────┼─ 返回 { files: [...] }              │
 │ 模型读到 @路径 → read 工具读取          │      │                                     │
 └────────────────────────────────────────┘      └─────────────────────────────────────┘
@@ -58,7 +58,7 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 ## 安全与资源边界
 
-- RPC 仅接受 `sessionId`，路径来自会话自身 header，不暴露任意路径；
+- 路由仅接受 `sessionId`，路径来自会话自身 header，不暴露任意路径；
 - 遍历受 `CAP`（3000）/`MAX_DEPTH`（16）/`SKIP` 目录三重约束；
 - git 子进程 stdout 收集上限 8MB、`graceMs` 5 秒；失败即降级。
 
