@@ -25,10 +25,10 @@ const SKIP = new Set([
   '.externalNativeBuild', 'build', 'out', 'target', 'dist', 'release',
   'debug', '.dsh', '.agents', '.claude', '.codex', 'storages', 'sessions',
 ])
-/** 文件总数上限。 */
-const CAP = 3000
-/** 遍历深度上限（doc 等深层目录可达 13 层）。 */
-const MAX_DEPTH = 16
+/** 文件总数上限（防超大仓库：列表体积、传输、客户端每次按键排序成本）。 */
+const CAP = 10000
+/** 遍历深度上限（真实项目普遍 ≤20 层，32 留足余量）。 */
+const MAX_DEPTH = 32
 
 /** 路径统一为正斜杠形式。 */
 function norm(p) {
