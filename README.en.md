@@ -27,14 +27,11 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 
 ## Installation
 
-### Option 1: from npm (recommended, after publish)
+### Option 1: from npm (recommended)
 
 ```bash
 dsh plugin --profile web add @hucj/dsh-file-mention
 ```
-
-> ⚠️ Not yet published to the npm registry (`npm view @hucj/dsh-file-mention` currently returns 404);
-> once published this option works — for now use Option 2.
 
 ### Option 2: local path (development)
 
@@ -161,7 +158,7 @@ See [docs/architecture.md](docs/architecture.md) for details.
 git remote add origin git@github.com:StephenHu09/dsh-file-mention.git
 git branch -M main
 git push -u origin main
-git tag v0.1.8 && git push origin v0.1.8
+git tag v0.1.9 && git push origin v0.1.9
 ```
 
 ### npm

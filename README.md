@@ -33,9 +33,6 @@ DSH（DeepSeek Harness）Web GUI 的 **`@` 关联工作区文件**插件：在�
 dsh plugin --profile web add @hucj/dsh-file-mention
 ```
 
-> ⚠️ 该包尚未发布到 npm registry（`npm view @hucj/dsh-file-mention` 当前返回 404）；
-> 发布后此方式即可用，当前请用方式二。
-
 ### 方式二：本地路径（开发调试）
 
 先从源码**编译**（lib/ 是构建产物，随包发布，源码改动后必须重新构建再安装）：
@@ -161,7 +158,7 @@ docs/
 git remote add origin git@github.com:StephenHu09/dsh-file-mention.git
 git branch -M main
 git push -u origin main
-git tag v0.1.8 && git push origin v0.1.8
+git tag v0.1.9 && git push origin v0.1.9
 ```
 
 ### npm
