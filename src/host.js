@@ -30,6 +30,52 @@ const CAP = 10000
 /** 遍历深度上限（真实项目普遍 ≤20 层，32 留足余量）。 */
 const MAX_DEPTH = 32
 
+/** git 结果缓存 TTL：仓库根几乎不变；跟踪列表变化慢；status 变化最快。 */
+const GIT_ROOT_TTL = 60_000
+const GIT_TRACKED_TTL = 15_000
+const GIT_DIRTY_TTL = 5_000
+const gitRootCache = new Map() // cwd -> { root, cwdRel, at }
+const gitTrackedCache = new Map() // cwd -> { files, at }
+const gitDirtyCache = new Map() // cwd -> { dirty, at }
+const extrasCache = new Map() // cwd -> { extras, at }（.aiinclude 收集结果，与 tracked 同 TTL）
+
+/** 读取 TTL 缓存条目；未过期返回条目，过期或缺失返回 null。 */
+function cacheGet(map, key, ttl, now) {
+  const entry = map.get(key)
+  if (entry === undefined || now - entry.at >= ttl) return null
+  return entry
+}
+
+/** 会话 header cwd 的持久化回退缓存：sessionId -> { cwd, at }。 */
+const sessionCwdCache = new Map()
+const SESSION_CWD_TTL = 60_000
+
+/**
+ * 从持久化层解析会话的 cwd（ctx.sessions 内存注册表缺失时使用，如历史对话）。
+ * 返回 undefined 表示解析失败；结果按 sessionId 缓存 60s。
+ */
+async function resolveCwdFromPersistence(ctx, sessionId) {
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined
+  const memo = sessionCwdCache.get(sessionId)
+  if (memo !== undefined && Date.now() - memo.at < SESSION_CWD_TTL) return memo.cwd
+  const persistence = ctx.get('sessionPersistence')
+  if (persistence === undefined) return undefined
+  let cwd
+  try {
+    const info = await persistence.inspect(sessionId)
+    // SessionInspection 结构取 header 字段（meta/header/sessionHeader 均防御）
+    const meta =
+      info !== null && typeof info === 'object'
+        ? info.meta ?? info.header ?? info.sessionHeader ?? info.session?.header
+        : undefined
+    cwd = meta !== null && typeof meta === 'object' && typeof meta.cwd === 'string' ? meta.cwd : undefined
+  } catch {
+    cwd = undefined
+  }
+  sessionCwdCache.set(sessionId, { cwd, at: Date.now() })
+  return cwd
+}
+
 /** 路径统一为正斜杠形式。 */
 function norm(p) {
   return typeof p === 'string' ? p.replace(/\\/g, '/') : ''
@@ -223,7 +269,12 @@ function apply(ctx) {
         ? args.sessionId
         : undefined
     const session = sessionId !== undefined ? ctx.sessions.get(sessionId) : undefined
-    const cwd = session !== undefined && session.header !== undefined ? session.header.cwd : undefined
+    let cwd = session !== undefined && session.header !== undefined ? session.header.cwd : undefined
+    if (typeof cwd !== 'string' || cwd.length === 0) {
+      // 内存注册表（ctx.sessions）只含活跃/已恢复会话；左侧历史对话不在其中时，
+      // 回退到持久化层读取会话 header 拿 cwd（60s 缓存，避免每次请求读盘）。
+      cwd = await resolveCwdFromPersistence(ctx, sessionId)
+    }
     if (typeof cwd !== 'string' || cwd.length === 0) {
       json(res, { files: [] })
       return
@@ -239,49 +290,87 @@ function apply(ctx) {
       let dirty = []
 
       // 1) git 跟踪文件：天然遵守 .gitignore，排除编译产物与未跟踪文件
-      const rootText = await runGit(ctx, cwd, ['rev-parse', '--show-toplevel'])
-      const trackedText = rootText !== undefined ? await runGit(ctx, cwd, ['ls-files', '-c']) : undefined
+      //    结果分层缓存（root 60s / tracked 15s / dirty 5s），TTL 内不重复跑 git 子进程；
+      //    陈旧上限即 TTL，客户端侧 30s SWR 缓存比它更"旧"，因此整体一致性不受影响。
+      const now = Date.now()
+      const rootEntry = cacheGet(gitRootCache, cwd, GIT_ROOT_TTL, now)
+      let repoRoot = ''
       let cwdRelFromRepo = ''
-      if (trackedText !== undefined) {
-        const repoRoot = norm(rootText.trim())
-        cwdRelFromRepo =
-          repoRoot !== '' && norm(cwd).startsWith(repoRoot + '/')
-            ? norm(cwd).slice(repoRoot.length + 1)
-            : ''
-        files = trackedText
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter((l) => l !== '')
-          .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
-          .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+      if (rootEntry !== null) {
+        repoRoot = rootEntry.root
+        cwdRelFromRepo = rootEntry.cwdRel
+      } else {
+        const rootText = await runGit(ctx, cwd, ['rev-parse', '--show-toplevel'])
+        if (rootText !== undefined) {
+          repoRoot = norm(rootText.trim())
+          cwdRelFromRepo =
+            repoRoot !== '' && norm(cwd).startsWith(repoRoot + '/')
+              ? norm(cwd).slice(repoRoot.length + 1)
+              : ''
+        }
+        // 非仓库也缓存（root=''），60s 内不再重复探测；git init 后最多 60s 识别
+        gitRootCache.set(cwd, { root: repoRoot, cwdRel: cwdRelFromRepo, at: now })
+      }
 
-        // 1b) 未提交变更（staged + unstaged + 删除 + 未跟踪）：@ 默认排序优先展示
+      const trackedEntry = cacheGet(gitTrackedCache, cwd, GIT_TRACKED_TTL, now)
+      if (trackedEntry !== null) {
+        files = trackedEntry.files
+      } else if (repoRoot !== '') {
+        const trackedText = await runGit(ctx, cwd, ['ls-files', '-c'])
+        if (trackedText !== undefined) {
+          files = trackedText
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter((l) => l !== '')
+            .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
+            .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+          gitTrackedCache.set(cwd, { files, at: Date.now() })
+        }
+      } else {
+        // 回退：git 不可用/非仓库时，解析 .gitignore 后全量扫描（结果同样缓存 15s）
+        const ignoreText = await readTextSafe(fs, cwd + '/.gitignore')
+        const rules = compileRules(ignoreText !== undefined ? ignoreText.split(/\r?\n/) : [])
+        files = await walkFiles(fs, root, (p) => !matchRules(rules, p, false), null)
+        gitTrackedCache.set(cwd, { files, at: Date.now() })
+      }
+
+      // 1b) 未提交变更（staged + unstaged + 删除 + 未跟踪）：@ 默认排序优先展示
+      const dirtyEntry = cacheGet(gitDirtyCache, cwd, GIT_DIRTY_TTL, now)
+      if (dirtyEntry !== null) {
+        dirty = dirtyEntry.dirty
+      } else if (repoRoot !== '') {
         const statusText = await runGit(ctx, cwd, ['status', '--porcelain', '-z'])
         if (statusText !== undefined) {
           dirty = parseStatusZ(statusText)
             .filter((p) => cwdRelFromRepo === '' || p.startsWith(cwdRelFromRepo + '/'))
             .map((p) => (cwdRelFromRepo === '' ? p : p.slice(cwdRelFromRepo.length + 1)))
+          gitDirtyCache.set(cwd, { dirty, at: Date.now() })
         }
-      } else {
-        // 回退：git 不可用/非仓库时，解析 .gitignore 后全量扫描
-        const ignoreText = await readTextSafe(fs, cwd + '/.gitignore')
-        const rules = compileRules(ignoreText !== undefined ? ignoreText.split(/\r?\n/) : [])
-        files = await walkFiles(fs, root, (p) => !matchRules(rules, p, false), null)
       }
 
       // 2) .aiinclude：重新纳入被忽略/未跟踪但 AI 需要的文件（支持子目录嵌套配置）
+      //    extras 收集结果同样缓存 15s（与 tracked 同 TTL）——该 walk 遍历 doc/ 级
+      //    子树（实测 ~370ms/次），是热请求的大头；aiRules 为 null（无配置）时
+      //    整个逻辑跳过，因此缓存不会在配置被删除后残留。
       const aiRules = await loadAiRules(fs, cwd, root)
       if (aiRules !== null) {
-        const extras = await walkFiles(
-          fs,
-          root,
-          (p) => matchRules(aiRules, p, false),
-          (p) => {
-            const win = lastMatchRule(aiRules, p, true)
-            return win === undefined ? null : !win.negate
-          },
-          (p) => dirMayLeadToMatch(aiRules, p),
-        )
+        let extras
+        const extrasEntry = cacheGet(extrasCache, cwd, GIT_TRACKED_TTL, now)
+        if (extrasEntry !== null) {
+          extras = extrasEntry.extras
+        } else {
+          extras = await walkFiles(
+            fs,
+            root,
+            (p) => matchRules(aiRules, p, false),
+            (p) => {
+              const win = lastMatchRule(aiRules, p, true)
+              return win === undefined ? null : !win.negate
+            },
+            (p) => dirMayLeadToMatch(aiRules, p),
+          )
+          extrasCache.set(cwd, { extras, at: Date.now() })
+        }
         const seen = new Set(files)
         for (const p of extras) {
           if (!seen.has(p)) {

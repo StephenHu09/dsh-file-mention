@@ -54,11 +54,21 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 ## 客户端缓存与失效
 
-- 缓存键为**工作区 cwd**（响应携带 `cwd` 字段）：同工作区多会话共享一份列表，TTL 30 秒；
-  会话首次响应后记录其 cwd，旧版 Host（无 `cwd` 字段）退化为按 sessionId 缓存；
+- 缓存键为**工作区 cwd**（响应携带 `cwd` 字段）：同工作区多会话共享一份列表；会话首次响应后记录其 cwd，旧版 Host（无 `cwd` 字段）退化为按 sessionId 缓存；
+- **stale-while-revalidate**：TTL（30s）内直接返回缓存；过期后**立即返回旧列表**并后台发起刷新（refreshing 集合去重），刷新失败回退旧数据——`@` 菜单任意时刻零等待；
 - 同一会话在途请求去重（pending map），避免并发重复拉取；
-- 拉取失败回退空列表并允许下次重试；
 - 插件卸载/更新时通过 effect disposer 注销输入源并清空缓存。
+
+## Host 侧缓存分层
+
+| 缓存 | TTL | 说明 |
+|------|-----|------|
+| 仓库根（rev-parse） | 60s | 几乎不变；git init 后最多 60s 识别 |
+| git 跟踪列表（ls-files） | 15s | 变化慢；回退扫描（无 git）结果同样缓存 |
+| git 变更集（status） | 5s | 变化最快，TTL 最短 |
+| `.aiinclude` 规则 | 60s | 根 + 嵌套发现合并结果 |
+
+全部按 cwd 内存缓存；陈旧上限即各 TTL，均短于客户端 30s SWR 缓存，整体一致性由客户端兜底。
 
 ## Host 侧 `.aiinclude` 规则
 
@@ -69,7 +79,7 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 ## 安全与资源边界
 
 - 路由仅接受 `sessionId`，路径来自会话自身 header，不暴露任意路径；
-- 遍历受 `CAP`（3000）/`MAX_DEPTH`（16）/`SKIP` 目录三重约束；
+- 遍历受 `CAP`（10000）/`MAX_DEPTH`（32）/`SKIP` 目录三重约束；
 - git 子进程 stdout 收集上限 8MB、`graceMs` 5 秒；失败即降级。
 
 ## 后续计划（Backlog）
@@ -77,6 +87,8 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 - [x] `.aiinclude` 支持嵌套目录多份（按目录层级合并，同 `.gitignore` 层级语义）
 - [x] 命中排序：精确/前缀优先于子串（相关性 > 变更状态）
 - [x] 多会话共享缓存（按工作区 cwd，同工作区只扫描一次）
+- [x] git 结果分层缓存（root 60s / tracked 15s / dirty 5s）
+- [x] 客户端 stale-while-revalidate（TTL 过期先展示旧列表、后台刷新，@ 零等待）
 - [ ] 可配置：`@` 选中后直接附加文件内容（小文件）或仅路径（大文件）
 - [ ] 按扩展名过滤开关（二进制/资源文件）
 - [ ] 菜单分组图标定制（依赖 DSH 侧图标枚举交付）
