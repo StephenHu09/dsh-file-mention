@@ -11,7 +11,7 @@
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
  */
-import { filterFiles, fileIcon, statusLetter, stripStatusSuffix } from './core.js'
+import { filterFiles, fileIcon } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
@@ -104,20 +104,41 @@ function apply(ctx) {
     async candidates(session, { query, signal }) {
       const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
+      // dirty 仅用于「未提交变更优先」排序（v0.1.15 起不再做文件名尾部 [M]/[A] 标记）
       const dirtySet = new Set(dirty.map((d) => d.path))
-      const statusOf = new Map(dirty.map((d) => [d.path, d.status]))
-      return filterFiles(files, query, 100, dirtySet).map((f) => ({
-        name: f.slice(f.lastIndexOf('/') + 1),
-        // 变更文件在行尾（description 为行尾元素 flex:1）追加状态字母；
-        // onPick 剥离尾部标记后插入，保证模型拿到的是干净路径
-        description: statusOf.has(f) ? f + ' ' + statusLetter(statusOf.get(f)) : f,
-        icon: fileIcon(f),
-      }))
+      return filterFiles(files, query, 100, dirtySet).map((f) => {
+        const base = f.slice(f.lastIndexOf('/') + 1)
+        return {
+          name: base,
+          description: f,
+          icon: fileIcon(f),
+        }
+      })
     },
     onPick({ candidate }) {
-      return { text: '@' + stripStatusSuffix(candidate.description) + ' ' }
+      return { text: '@' + candidate.description + ' ' }
     },
   }
+
+  // 菜单显示适配（@ 候选菜单，MenuView）：
+  // 官方 CSS Module 限制——菜单 max-width min(537px, 100%)、行高 40px/padding 8px 10px、
+  // 行字号 14px、name 列 flex:none + max-width:40%（长文件名把尾部 [M] 标记截断）。
+  // 用高特异性选择器（0,1,1 > 官方 0,1,0）覆盖，不受样式加载顺序影响：
+  //   - 菜单加宽到 min(720px, 100%)，name 可用宽 215px → 288px（变更标记可见字符 ~28 → ~41）
+  //   - 行字号 14px → 13px，每行可见字符 +8%
+  //   - 行高压缩（min-height 40→32px、padding 8px→4px 8px、line-height 22→18px），
+  //     320px 菜单从 8 行增至 10 行（+25% 内容量）
+  const menuStyle = document.createElement('style')
+  menuStyle.dataset.plugin = name
+  menuStyle.textContent = [
+    'div[role="listbox"]{max-width:min(720px,100%)}',
+    'button[role="option"]{font-size:13px;line-height:18px;min-height:32px;padding:4px 8px}',
+    'div[role="presentation"]{padding:4px 8px}',
+  ].join('\n')
+  ctx.effect(() => {
+    document.head.appendChild(menuStyle)
+    return () => menuStyle.remove()
+  }, 'file-mention: candidate menu style')
 
   ctx.effect(() => ctx.inputTriggers.registerSource(source), 'file-mention: @ source')
 }

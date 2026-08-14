@@ -17,7 +17,7 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | `@` input trigger | Same `inputTriggers` mechanism as the `/` skill menu, `@pluginId`, `@subagent` — multiple sources coexist |
 | Real-time filter | Matches basename or full path (case-insensitive), up to 100 results shown |
 | Type icons | 4 icon classes by extension: ⌨️ code / 📝 docs / 🖼️ images / 📄 other |
-| Change marks | Uncommitted files get a trailing status letter (M modified / A added / D deleted / R renamed); stripped automatically on pick |
+| Menu adaption | Candidate menu widened to 720px (official default 537px) + row font 14→13px + tighter rows (40→32px, +25% rows per screen) (high-specificity selectors override official CSS; affects only the `@` candidate menu) |
 | Match ranking | **Exact match** (path/basename equal) → **prefix match** → substring match (within group: changed-first, then alphabetical) |
 | Default ordering | **Uncommitted changes first** (git status changeset + untracked new files) → non-hidden dirs → hidden dirs (alphabetical within group) |
 | Git-tracked filtering | `git ls-files -c` tracked files ∪ `-o --exclude-standard` untracked non-ignored files; new files appear automatically, build artifacts stay out |

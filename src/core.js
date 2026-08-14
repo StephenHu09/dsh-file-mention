@@ -125,6 +125,9 @@ export function matchRules(rules, rel, isDir) {
  *
  * 状态码归一化（客户端用于行尾字母标记）：
  *   `??` 未跟踪 → A；X/Y 任一侧 A → A、D → D、R/C → R；其余（M/U/T/冲突）→ M。
+ * 重命名/复制的原路径字段（旧路径）也输出为 `{ path, status: 'D' }`：
+ *   旧文件已被移走/删除，状态数据保持完整（git 的 rename 检测可能把「同内容的
+ *   新增+删除」配对成 R——此时原路径对应的删除文件若单独出现会丢失其 D 状态）。
  */
 export function parseStatusZ(text) {
   const dirty = []
@@ -137,6 +140,10 @@ export function parseStatusZ(text) {
     if (code === 'R' || code === 'C') {
       const path = entry.slice(3)
       if (path !== '') dirty.push({ path, status: 'R' })
+      const oldPath = parts[i + 1]
+      if (oldPath !== undefined && oldPath !== '') {
+        dirty.push({ path: oldPath, status: 'D' })
+      }
       i += 1 // 跳过原路径字段（纯路径段，无状态码，不能被误当条目）
     } else if (code === '?' && x === '?') {
       const path = entry.slice(3)
@@ -190,20 +197,6 @@ const ICON_EXTS = {
 export function fileIcon(relPath) {
   const ext = relPath.slice(relPath.lastIndexOf('.') + 1).toLowerCase()
   return FILE_ICONS[ICON_EXTS[ext]] ?? FILE_ICONS.other
-}
-
-/** 变更状态 → 行尾字母（未识别状态兜底 M）。 */
-const STATUS_LETTERS = { M: 'M', A: 'A', D: 'D', R: 'R' }
-export function statusLetter(status) {
-  return STATUS_LETTERS[status] ?? 'M'
-}
-
-/**
- * 剥离 description 尾部的变更标记（` 空格+大写字母`），恢复干净路径用于插入。
- * onPick 使用：展示时 description 为 `路径 M`，插入前剥离。
- */
-export function stripStatusSuffix(text) {
-  return String(text).replace(/ [MARD]$/, '')
 }
 
 /**

@@ -200,7 +200,7 @@ test('修改文件（staged）：files 与 dirty 均含', async (t) => {
   assert.equal(statusOf(dirty, 'app/main.js'), 'M', 'staged 修改状态码应为 M')
 })
 
-test('重命名（git mv staged）：dirty 取新路径、旧路径不残留', async (t) => {
+test('重命名（git mv staged）：dirty 取新路径为 R、旧路径标记 D 且不进 files', async (t) => {
   const repo = makeRepo(t)
   await initRepo(repo)
   putFile(repo, 'old.txt')
@@ -210,9 +210,12 @@ test('重命名（git mv staged）：dirty 取新路径、旧路径不残留', a
   const app = createApp(repo)
   const { files, dirty } = await app.call()
   assert.ok(files.includes('new file.txt'), 'files 应含新路径')
+  assert.ok(!files.includes('old.txt'), 'files 不应含旧路径')
   assert.ok(hasPath(dirty, 'new file.txt'), 'dirty 应含新路径（未提交变更优先）')
   assert.equal(statusOf(dirty, 'new file.txt'), 'R', '重命名状态码应为 R')
-  assert.ok(!hasPath(dirty, 'old.txt'), 'dirty 不应含旧路径')
+  // v0.1.14：R 原路径字段也输出为 D（git 可能把同内容删除配对成 R 源，旧路径删除
+  // 状态不能丢）；旧路径不在 files，dirty 的 D 只作数据完整性，不影响 UI
+  assert.equal(statusOf(dirty, 'old.txt'), 'D', 'git mv 旧路径状态应为 D（数据完整）')
 })
 
 test('重命名（工作区 mv unstaged）：新路径入列且可读，旧路径剔除', async (t) => {
@@ -425,4 +428,50 @@ test('一致性：files 中每一项都必须是磁盘上真实存在的文件',
   assert.ok(files.includes('a.txt'))
   assert.ok(files.includes('new/c.txt'))
   assert.ok(!files.includes('sub/b.txt'))
+})
+
+// ============ 状态标记矩阵（A/M/D/R 区分） ============
+
+test('状态矩阵：8 种 git 状态 A/M/D/R 正确区分', async (t) => {
+  const repo = makeRepo(t)
+  await initRepo(repo)
+  for (const f of ['mod.txt', 'staged.txt', 'both.txt', 'del1.txt', 'old.txt']) putFile(repo, f)
+  await commitAll(repo)
+
+  putFile(repo, 'new.txt') // ?? 未跟踪 → A
+  putFile(repo, 'add.txt', 'unique staged content\n'); await runGit(repo, ['add', 'add.txt']) // A  staged add → A
+  putFile(repo, 'mod.txt', 'modified\n') // M unstaged mod → M
+  putFile(repo, 'staged.txt', 'mod2\n'); await runGit(repo, ['add', 'staged.txt']) // M  staged mod → M
+  putFile(repo, 'both.txt', 'mod3\n'); await runGit(repo, ['add', 'both.txt']); putFile(repo, 'both.txt', 'mod4\n') // MM → M
+  await runGit(repo, ['rm', '--quiet', 'del1.txt']) // D  staged del → D
+  await runGit(repo, ['mv', 'old.txt', 'newname.txt']) // R  rename → R
+
+  const app = createApp(repo)
+  const { dirty } = await app.call()
+  const expect = {
+    'new.txt': 'A', 'add.txt': 'A', 'mod.txt': 'M', 'staged.txt': 'M',
+    'both.txt': 'M', 'del1.txt': 'D', 'newname.txt': 'R',
+  }
+  for (const [p, want] of Object.entries(expect)) {
+    assert.equal(statusOf(dirty, p), want, `${p} 期望 ${want}，dirty 实际: ${JSON.stringify(dirty)}`)
+  }
+  // rename 原路径：文件已移走（工作区无），不应出现在 files（会被剔除）；dirty 允许 D 死条目
+})
+
+test('状态矩阵：重命名 + 同内容 git rm 被 git 配对成 rename 源时，原路径删除状态不丢失', async (t) => {
+  const repo = makeRepo(t)
+  await initRepo(repo)
+  for (const f of ['same.txt', 'old.txt']) putFile(repo, f, 'identical\n')
+  await commitAll(repo)
+
+  // 两个同内容文件：一个 git rm、一个 git mv → git 可能把 rm 的文件配对成 rename 源
+  await runGit(repo, ['rm', '--quiet', 'same.txt'])
+  await runGit(repo, ['mv', 'old.txt', 'newname.txt'])
+
+  const app = createApp(repo)
+  const { files, dirty } = await app.call()
+  assert.equal(statusOf(dirty, 'newname.txt'), 'R', '新路径应为 R')
+  // same.txt 无论被配对成 R 原路径（D 兜底）还是独立 D 条目，其删除状态都应可查（D）
+  assert.equal(statusOf(dirty, 'same.txt'), 'D', '被配对成 rename 源的同内容删除文件应保留 D 状态')
+  assert.ok(!files.includes('same.txt'), '已删除文件不应出现在 files')
 })

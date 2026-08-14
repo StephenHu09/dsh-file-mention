@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSH 输入框 chip 效果预览（真实 CSS + 真实字体）</title>
+<style>
+  /* ===== 从 @deepseek-ai/dsh-client-ui-conversation InputBar.module.css 原样提取 ===== */
+  @font-face {
+    font-family: DshChipCell;
+    src: url(data:font/ttf;base64,AAEAAAAKAIAAAwAgT1MvMkT8SmIAAAEoAAAAYGNtYXAADQBPAAABkAAAADRnbHlmAAAAAAAAAcwAAAABaGVhZCwtPGoAAACsAAAANmhoZWEDIg7bAAAA5AAAACRobXR4EZQAAAAAAYgAAAAIbG9jYQAAAAAAAAHEAAAABm1heHAAAwACAAABCAAAACBuYW1lvljk2gAAAdAAAABscG9zdNNweNQAAAI8AAAALQABAAAAAQAAdia1tV8PPPUAAwPoAAAAAOaLfcUAAAAA5ot9xQAAAAAAAAAAAAAAAwACAAAAAAAAAAEAAAMg/zgAAA+gAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAACAAEAAAACAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwjKAZAABQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAPz8/PwAA//z//AMg/zgAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAAB9AAAD6AAAAAAAAIAAAADAAAAFAADAAEAAAAUAAQAIAAAAAQABAABAAD//P//AAD//P//AAUAAQAAAAAAAAAAAAAAAAAAAAAAAAAEADYAAQAAAAAAAQALAAAAAQAAAAAAAgAHAAsAAwABBAkAAQAWABIAAwABBAkAAgAOAChEc2hDaGlwQ2VsbFJlZ3VsYXIARABzAGgAQwBoAGkAcABDAGUAbABsAFIAZQBnAHUAbABhAHIAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAABAgZvYmpyZXAAAAA=) format("truetype");
+  }
+  /* 深色主题 token（来自 dsh-web-frontend index.css） */
+  :root {
+    --dsw-alias-label-primary: rgb(249, 250, 251);
+    --dsw-alias-label-caption: rgb(129, 133, 140);
+    --dsw-alias-state-business-primary: rgb(103, 158, 254);   /* textRef 蓝 */
+    --dsw-alias-state-warn-label: rgb(221, 134, 41);          /* hlToken 琥珀 */
+    --dsw-specific-input-major: rgb(44, 44, 46);
+    --dsw-alias-border-l2-darkmode-thin: rgba(255, 255, 255, .06);
+    --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, .08);
+    --dsw-font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  body {
+    background: #19191c;
+    color: var(--dsw-alias-label-primary);
+    font-family: var(--dsw-font-family);
+    margin: 0;
+    padding: 32px 24px 80px;
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .sub { color: var(--dsw-alias-label-caption); font-size: 13px; margin: 0 0 24px; line-height: 20px; }
+
+  .section-title { font-size: 15px; font-weight: 600; margin: 28px 0 10px; color: var(--dsw-alias-label-primary); }
+  .note { color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 19px; margin: 6px 0 10px; max-width: 760px; }
+  .note code { background: rgba(255,255,255,.08); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+
+  /* ===== 输入框卡片（InputBar.module.css 原样） ===== */
+  .card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 760px;
+    border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+    background: var(--dsw-specific-input-major);
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    border-radius: 22px;
+    padding: 12px 16px 12px;
+    font-size: 16px;
+    line-height: 24px;
+    margin-bottom: 14px;
+  }
+  .grow { position: relative; min-height: 48px; }
+  .backdrop {
+    color: var(--dsw-alias-label-primary);
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .backdrop, .mirror {
+    box-sizing: border-box;
+    font-family: "DshChipCell", var(--dsw-font-family);
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+  }
+  .hlToken { color: var(--dsw-alias-state-warn-label); background-color: transparent; }
+  .textRef {
+    color: var(--dsw-alias-state-business-primary);
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    background-color: transparent;
+  }
+  .chip {
+    background: #6187d838;
+    border-radius: 6px;
+    position: relative;
+  }
+  .chip:before { content: "\FFFC"; color: transparent; }
+  .chipLabel {
+    width: calc(138.889% - 10px);
+    color: var(--dsw-alias-label-primary);
+    white-space: nowrap;
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    position: absolute;
+    top: 50%; left: 50%;
+    overflow: hidden;
+    transform: translate(-50%, -50%) scale(.72);
+  }
+  .chipInvalid { opacity: .7; background: #d8616133; text-decoration: line-through; }
+  .tag { font-size: 12px; color: var(--dsw-alias-label-caption); margin: 2px 0 6px; }
+  .tag b { color: var(--dsw-alias-state-business-primary); font-weight: 600; }
+  .tag.amber b { color: var(--dsw-alias-state-warn-label); }
+  .caption-row { color: var(--dsw-alias-label-caption); font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>输入框「@路径」引用 · 视觉方案预览</h1>
+<p class="sub">本页用官方 <code>InputBar.module.css</code> 原样 CSS + 官方 <code>DshChipCell</code> 字体（从 @deepseek-ai/dsh-client-ui-conversation 提取），复刻 DSH 输入框「透明输入 + backdrop 装饰层」渲染，所见即真实效果。</p>
+
+<div class="section-title">场景 A · 现状（v0.1.12 纯文本插入）</div>
+<div class="tag">选中文件后输入框内是普通文本，无任何视觉区分</div>
+<div class="card"><div class="grow"><div class="backdrop">帮我看看 <span style="color:var(--dsw-alias-label-primary)">@docs/images/example.png</span> 这个文件怎么用</div></div></div>
+<div class="caption-row">↑ 与普通输入完全一样，靠用户记忆区分</div>
+
+<div class="section-title">场景 B · 官方 lexicon 扫描（textRef 蓝色）</div>
+<div class="tag">对应 <code>/goal</code> 那种蓝色 —— 但路径含 <code>/</code> 和 <code>.</code>，只能命中第一段</div>
+<div class="card"><div class="grow"><div class="backdrop">帮我看看 <mark class="textRef">@docs</mark>/images/example.png 这个文件怎么用</div></div></div>
+<div class="caption-row">↑ 「@docs」变蓝、后面半截不变 —— 半截高亮，且任何 @docs 开头的都会蓝（不精确）</div>
+
+<div class="section-title">场景 C · chip 方案（insert + codec，v0.1.13 拟实施）</div>
+<div class="tag">选中文件 → 输入框出现蓝色圆角胶囊，完整路径可见；回车提交自动还原为 <code>@路径</code> 文本</div>
+<div class="card"><div class="grow"><div class="backdrop">帮我看看 <span class="chip" data-occurrence="1"><span class="chipLabel">docs/images/example.png</span></span> 这个文件怎么用</div></div></div>
+<div class="caption-row">↑ chip 居中显示完整路径，悬停有 title 提示；删除 = 整块删除（backspace 一次）</div>
+
+<div class="section-title">chip 细节 · 不同路径长度与状态</div>
+<div class="tag">观察长路径的截断表现（label 有 nowrap + overflow:hidden 约束）</div>
+
+<div class="card">
+  <div class="tag">短路径 · 根目录文件</div>
+  <div class="grow"><div class="backdrop">改一下 <span class="chip"><span class="chipLabel">client.js [M]</span></span> 的注释</div></div>
+</div>
+
+<div class="card">
+  <div class="tag">中等路径 · 带变更标记（[M] 来自 v0.1.12 name 尾部标记）</div>
+  <div class="grow"><div class="backdrop">看 <span class="chip"><span class="chipLabel">docs/architecture.md [M]</span></span> 和 <span class="chip"><span class="chipLabel">src/core.js [A]</span></span></div></div>
+</div>
+
+<div class="card">
+  <div class="tag">长路径 · 多级目录（重点看截断）</div>
+  <div class="grow"><div class="backdrop">参考 <span class="chip"><span class="chipLabel">packages/dsh-ssh/src/shared/connection-pool.js</span></span> 的实现</div></div>
+</div>
+
+<div class="card">
+  <div class="tag">超长路径 · 20+ 字符（观察是否被截断/换行）</div>
+  <div class="grow"><div class="backdrop">对比 <span class="chip"><span class="chipLabel">docs/design/2026/08/session-input-machine-and-slash-pipeline-architecture-notes.md</span></span></div></div>
+</div>
+
+<div class="card">
+  <div class="tag">失效引用 · invalid 状态（官方机制：删除线 + 半透明红底）</div>
+  <div class="grow"><div class="backdrop">这个文件已删 <span class="chip chipInvalid"><span class="chipLabel">docs/images/example.png</span></span> 别引用了</div></div>
+</div>
+
+<div class="section-title">对照 · 你看到的 <code>/goal</code> 颜色来源</div>
+<div class="tag amber">输入中命令被 claim → hlToken 琥珀色（本页可对照，来自同一份 CSS）</div>
+<div class="card"><div class="grow"><div class="backdrop"><mark class="hlToken">/goal</mark> 分析一下今天的目标</div></div></div>
+<div class="caption-row">↑ hlToken = warn 琥珀色；发送后该行不再高亮</div>
+
+<div class="section-title">混合场景 · 文本流中的多个 chip</div>
+<div class="card"><div class="grow"><div class="backdrop">请读 <span class="chip"><span class="chipLabel">src/core.js [M]</span></span>，然后把结论写进 <span class="chip"><span class="chipLabel">docs/architecture.md [M]</span></span>，图片见 <span class="chip"><span class="chipLabel">docs/images/example.png</span></span></div></div></div>
+<div class="caption-row">↑ chip 与普通文本同流混排；提交后每个 chip 原位展开为 @路径 文本</div>
+
+</body>
+</html>

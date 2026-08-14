@@ -45,9 +45,10 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 - `matchRules(rules, rel, isDir)`：最后匹配者生效（gitignore 语义）；
 - `filterFiles(files, query, limit)`：客户端菜单过滤（basename/路径、大小写不敏感、限量）；
   命中排序：精确（路径/basename 全等）→ 前缀 → 子串，组内再按 dirty → 非隐藏 → 隐藏 + 字母序；
-- `parseStatusZ(text)`：`git status --porcelain -z` → `[{ path, status }]`（状态归一化 M/A/D/R，`??`→A）；
+- `parseStatusZ(text)`：`git status --porcelain -z` → `[{ path, status }]`（状态归一化 M/A/D/R，`??`→A；
+  R/C 的原路径字段（旧路径）同时输出为 D——git 的 rename 检测会把「同内容的新增+删除」配对成 R 源，
+  原路径对应的删除状态不能丢，v0.1.13）；
 - `fileIcon(relPath)`：4 类类型图标（⌨️ 代码 / 📝 文档 / 🖼️ 图片 / 📄 其他，扩展名映射，DSH 菜单 icon 纯文本渲染）；
-- `statusLetter(status)` / `stripStatusSuffix(text)`：行尾变更字母标记与 onPick 剥离（description 即插入值，标记必须剥离）；
 - `flattenNestedRules(dir, lines)`：嵌套 `.aiinclude` 规则展平为根相对（basename 模式展开为直接 + 跨段两条），与根规则合并后 last-match-wins。
 
 ### 4. 构建与打包
@@ -59,8 +60,8 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 
 ### 4b. 测试策略
 
-- **单元测试**（test/core.test.js，35 用例）：只覆盖 src/core.js 纯函数（匹配器/解析器），秒级。
-- **集成测试**（test/host.integration.test.js，18 用例）：最小 ctx mock 加载 src/host.js（subprocess 走**真实 git**、fs 走**真实文件系统**），直调 `/file-mention/list` handler；每个用例独立临时 git 仓库，模拟真实开发场景：新建（新/已跟踪目录）、修改（staged/unstaged）、重命名（git mv/工作区 mv）、删除（git rm/手动删）、中文与空格路径、子目录会话（含大小写变体）、.gitignore 忽略/取消、.aiinclude 纳入、非 git 回退、空仓库、缓存时效、files 物理存在一致性。
+- **单元测试**（test/core.test.js，39 用例）：只覆盖 src/core.js 纯函数（匹配器/解析器），秒级。
+- **集成测试**（test/host.integration.test.js，20 用例）：最小 ctx mock 加载 src/host.js（subprocess 走**真实 git**、fs 走**真实文件系统**），直调 `/file-mention/list` handler；每个用例独立临时 git 仓库，模拟真实开发场景：新建（新/已跟踪目录）、修改（staged/unstaged）、重命名（git mv/工作区 mv）、删除（git rm/手动删）、中文与空格路径、子目录会话（含大小写变体）、.gitignore 忽略/取消、.aiinclude 纳入、非 git 回退、空仓库、缓存时效、files 物理存在一致性、状态标记矩阵（8 种 git 状态 A/M/D/R 区分 + 同内容删除配对成 R 源时原路径 D 不丢失）。
 - 覆盖归因：历史四类 bug（未跟踪目录折叠、rename 取错路径、已删除残留、子目录裁剪）全部有对应集成用例。
 - 注意：host 缓存为模块级共享，同仓库多实例会命中旧缓存——多状态用例拆独立仓库。
 
@@ -70,6 +71,16 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 - **stale-while-revalidate**：TTL（30s）内直接返回缓存；过期后**立即返回旧列表**并后台发起刷新（refreshing 集合去重），刷新失败回退旧数据——`@` 菜单任意时刻零等待；
 - 同一会话在途请求去重（pending map），避免并发重复拉取；
 - 插件卸载/更新时通过 effect disposer 注销输入源并清空缓存。
+
+## 候选菜单显示适配（v0.1.13）
+
+- 官方 MenuView（dsh-client-ui-input-trigger）CSS Module：菜单 `max-width: min(537px, 100%)`、
+  行字号 14px、name 列 `flex:none + max-width:40%` + ellipsis——长文件名把尾部变更标记截断；
+- 插件注入 `<style>` 覆盖（ctx.effect 生命周期内挂载/卸载），选择器用**稳定 DOM 特征**而非
+  CSS Module 哈希类名：`div[role="listbox"]`（菜单）与 `button[role="option"]`（候选行），
+  特异性 0,1,1 > 官方 0,1,0，不受样式加载顺序影响；只影响 @ 候选菜单（命令面板 PopupSelectView 是另一组件）；
+- 覆盖值：`max-width: min(720px, 100%)`、`font-size: 13px; line-height: 20px`——
+  变更标记可见字符约 28 → 41（537→720px 的 40% name 宽 + 每字符变窄）。
 
 ## Host 侧缓存分层
 
