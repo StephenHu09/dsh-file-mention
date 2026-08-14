@@ -128,5 +128,5 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 - 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
 - 工作树干净；lib/ 与 src/ 同步；测试 30/30 通过；版本 0.1.10
-- npm 未发布（registry 404）；GitHub 仓库未创建
+- **已发布**：npm registry 最新 0.1.10（官方源）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.10 已推送）
 - 已知限制与故障恢复见 README.md 与 docs/recovery.md
