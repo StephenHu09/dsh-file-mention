@@ -11,7 +11,7 @@
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
  */
-import { filterFiles, fileIcon } from './core.js'
+import { filterFiles, fileIcon, deriveDirs } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
@@ -104,14 +104,18 @@ function apply(ctx) {
     async candidates(session, { query, signal }) {
       const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
-      // dirty 仅用于「未提交变更优先」排序（v0.1.15 起不再做文件名尾部 [M]/[A] 标记）
+      // dirty 仅用于「未提交变更优先」排序；目录由文件列表派生（deriveDirs），
+      // 与文件混排（目录 rank 1，与普通文件同层；变更文件仍置顶）
       const dirtySet = new Set(dirty.map((d) => d.path))
-      return filterFiles(files, query, 100, dirtySet).map((f) => {
-        const base = f.slice(f.lastIndexOf('/') + 1)
+      const dirs = deriveDirs(files)
+      return filterFiles([...dirs, ...files], query, 100, dirtySet).map((f) => {
+        const isDir = f.endsWith('/')
+        const base = (isDir ? f.slice(0, -1) : f).slice(f.lastIndexOf('/') + 1)
         return {
-          name: base,
+          // 目录名带尾斜杠（如 `docs/`）与文件视觉区分；description 保持可插入路径
+          name: isDir ? base + '/' : base,
           description: f,
-          icon: fileIcon(f),
+          icon: isDir ? '📁' : fileIcon(f),
         }
       })
     },

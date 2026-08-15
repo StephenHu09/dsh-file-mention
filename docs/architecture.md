@@ -45,6 +45,8 @@ dsh-file-mention 是一个双端（Host + Client）DSH 插件，利用 DSH 的�
 - `matchRules(rules, rel, isDir)`：最后匹配者生效（gitignore 语义）；
 - `filterFiles(files, query, limit)`：客户端菜单过滤（basename/路径、大小写不敏感、限量）；
   命中排序：精确（路径/basename 全等）→ 前缀 → 子串，组内再按 dirty → 非隐藏 → 隐藏 + 字母序；
+  兼容目录项（尾斜杠路径，basename 先剥离尾斜杠，v0.1.14）；
+- `deriveDirs(files)`（v0.1.14）：从文件列表派生全部父目录（尾斜杠、去重、排序）——目录引用零额外扫描；
 - `parseStatusZ(text)`：`git status --porcelain -z` → `[{ path, status }]`（状态归一化 M/A/D/R，`??`→A；
   R/C 的原路径字段（旧路径）同时输出为 D——git 的 rename 检测会把「同内容的新增+删除」配对成 R 源，
   原路径对应的删除状态不能丢，v0.1.13）；

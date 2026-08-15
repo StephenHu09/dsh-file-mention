@@ -20,7 +20,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 
 ## 常用命令
 
-- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（39 用例）+ **集成测试（20 用例，真实 git）**
+- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（42 用例）+ **集成测试（20 用例，真实 git）**
 - `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数，秒级）
 - `npm run test:it` —— node --test 跑 test/host.integration.test.js（模拟开发场景，真实 git + 真实 fs，约 20-30s）
 
@@ -33,7 +33,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 ## 强制性规则
 
 ### 1. 版本号
-- 保持 **0.1.x 递增**（当前 0.1.13 → 下一 0.1.14），**禁止跳到 0.2.x**
+- 保持 **0.1.x 递增**（当前 0.1.14 → 下一 0.1.15），**禁止跳到 0.2.x**
 - 每次版本提交前必须完成下方 2/3/4 项
 
 ### 2. 构建不变式（scripts/build.mjs）
@@ -44,7 +44,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 39 用例）—— 纯函数
+- `test/core.test.js`（node:test，当前 42 用例）—— 纯函数
 - `test/host.integration.test.js`（node:test，当前 20 用例）—— host 集成：独立临时 git 仓库 + 真实 git/fs，模拟新建/修改/重命名/删除/子目录/忽略/回退/缓存场景；**每次版本提交前跑 npm run check 必须全绿**
 - 修改 `src/core.js` 必须同步补/改测试；修改 `src/host.js` 涉及列表行为时必须同步补/改集成测试（先复现场景再改代码）
 - 集成测试注意：host 缓存为**模块级共享**，同一仓库多实例会命中旧缓存——需要多状态的用例拆成独立仓库/独立用例
@@ -76,7 +76,7 @@ git tag v0.1.x && git push origin v0.1.x
 npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
-# 版本递增：0.1.x（当前 0.1.13 → 下一 0.1.14）；每次发布前 npm run check + 同步安装目录
+# 版本递增：0.1.x（当前 0.1.14 → 下一 0.1.15）；每次发布前 npm run check + 同步安装目录
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
@@ -119,7 +119,8 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 - src/core.js —— gitignore 语法子集匹配器（纯函数、零依赖、可单测）：
   compileRules / lastMatchRule / matchRules / filterFiles / flattenNestedRules /
-  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix。
+  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix / deriveDirs（从文件列表派生目录，
+  v0.1.14 目录引用；filterFiles 兼容目录项：尾斜杠 basename 提取）。
 - src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
   git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ 已删除剔除（-d）+ .aiinclude 重新纳入 + 未提交变更集；
   所有 git 调用带 -c core.quotepath=false；ls-files 输出天然相对 cwd，status 输出仓库根相对（按 --show-prefix 裁剪）；
@@ -130,6 +131,8 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
   warm 钩子会话创建时预取；4 类类型图标（core.fileIcon）；
   dirty 兼容旧版 Host string[]；dirty 仅用于「未提交变更优先」排序（v0.1.13 起
   移除文件名尾部 [M]/[A] 变更标记——用户评估不实用）；
+  目录引用（v0.1.14）：deriveDirs 从文件列表派生目录，与文件混排（📁 图标、名称带尾斜杠，
+  插入 `@目录/ ` 供模型探索）；
   菜单显示适配（v0.1.13+）：注入高特异性 CSS（div[role="listbox"] / button[role="option"]，
   0,1,1 > 官方 CSS Module 0,1,0）把 @ 候选菜单加宽至 min(720px,100%)、行字号 14→13px、
   行高压缩（min-height 40→32px、padding 8px→4px 8px、line-height 22→18px），

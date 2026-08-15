@@ -16,7 +16,8 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 |---------|-------------|
 | `@` input trigger | Same `inputTriggers` mechanism as the `/` skill menu, `@pluginId`, `@subagent` — multiple sources coexist |
 | Real-time filter | Matches basename or full path (case-insensitive), up to 100 results shown |
-| Type icons | 4 icon classes by extension: ⌨️ code / 📝 docs / 🖼️ images / 📄 other |
+| Type icons | 4 icon classes by extension: ⌨️ code / 📝 docs / 🖼️ images / 📄 other; directories show 📁 |
+| Directory mention | Directories are derived from the file list automatically (zero extra scanning) — `@`-pick one to insert `@docs/ ` so the model can explore the folder |
 | Menu adaption | Candidate menu widened to 720px (official default 537px) + row font 14→13px + tighter rows (40→32px, +25% rows per screen) (high-specificity selectors override official CSS; affects only the `@` candidate menu) |
 | Match ranking | **Exact match** (path/basename equal) → **prefix match** → substring match (within group: changed-first, then alphabetical) |
 | Default ordering | **Uncommitted changes first** (git status changeset + untracked new files) → non-hidden dirs → hidden dirs (alphabetical within group) |

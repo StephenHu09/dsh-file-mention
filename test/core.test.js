@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
-  stripRepoPrefix, fileIcon,
+  stripRepoPrefix, fileIcon, deriveDirs,
 } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
@@ -259,6 +259,43 @@ test('filterFiles：前缀匹配排在子串前', () => {
     'doc/MainActivity.txt',
     'doc/main.md', // 'M'(0x4D) < 'm'(0x6D)
     'app/MyMainActivity.kt', // 子串最后
+  ])
+})
+
+test('deriveDirs：从文件列表派生全部父目录（去重、排序、尾斜杠）', () => {
+  assert.deepEqual(deriveDirs(['docs/images/example.png', 'docs/architecture.md', 'src/core.js', 'README.md']), [
+    'docs/',
+    'docs/images/',
+    'src/',
+  ])
+  assert.deepEqual(deriveDirs(['a.txt']), []) // 根目录文件 → 无目录
+  assert.deepEqual(deriveDirs([]), [])
+  assert.deepEqual(deriveDirs(['sub/deep/leaf.js', 'sub/other.js', 'sub/deep/leaf2.js']), ['sub/', 'sub/deep/'])
+})
+
+test('filterFiles：目录项参与过滤与排序（尾斜杠 basename 正确提取）', () => {
+  const items = ['docs/', 'docs/architecture.md', 'src/', 'src/core.js', '.agents/', 'README.md']
+  // 目录 `docs/` basename = docs：前缀命中排前；同 score 下字母序 `docs/` < `docs/architecture.md`
+  assert.deepEqual(filterFiles(items, 'docs'), ['docs/', 'docs/architecture.md'])
+  // 空查询：普通目录/文件 rank 1 按字母序，隐藏目录 rank 2 沉底
+  assert.deepEqual(filterFiles(items, ''), [
+    'README.md',
+    'docs/',
+    'docs/architecture.md',
+    'src/',
+    'src/core.js',
+    '.agents/',
+  ])
+})
+
+test('filterFiles：dirty 不影响目录（目录不在变更集，仍 rank 1）', () => {
+  const items = ['docs/', 'docs/architecture.md', 'src/', 'src/core.js']
+  const dirty = new Set(['docs/architecture.md', 'src/core.js'])
+  assert.deepEqual(filterFiles(items, '', 100, dirty), [
+    'docs/architecture.md',
+    'src/core.js',
+    'docs/',
+    'src/',
   ])
 })
 
