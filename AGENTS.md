@@ -68,7 +68,7 @@ lib/index.js  lib/client.js  package.json  README.md  README.en.md  cordis.patch
 **发布流程（维护者操作，README 不收录，以此为准）**：
 
 ```bash
-# GitHub（origin 已配置 git@github.com:StephenHu09/dsh-file-mention.git）
+# GitHub（origin 已配置 git@github.com:hucj09/dsh-file-mention.git）
 git push origin main
 git tag v0.1.x && git push origin v0.1.x
 
@@ -147,11 +147,4 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 - 注释与提交信息用中文；设计文档放 docs/。
 - 文件路径统一正斜杠（norm()）；遍历有 CAP 10000 / MAX_DEPTH 32 / SKIP 重型目录三重边界。
 
-## 当前状态（2026-08-15 会话快照）
-
-- 已安装到 web profile（~/.dsh/profiles/web/package.json，本地 file: 依赖，真实目录拷贝），GUI 在 http://127.0.0.1:3080
-- 工作树干净；lib/ 与 src/ 同步；测试 39 单测 + 20 集成全通过；版本 0.1.13
-- **已发布**：npm registry 最新 **0.1.13**（官方源，latest tag）；GitHub 仓库 https://github.com/StephenHu09/dsh-file-mention（main + tag v0.1.11 已推送，v0.1.13 待推送）；profile pnpm-workspace.yaml 豁免含 @hucj/dsh-file-mention@0.1.11 与 @0.1.13
-- **v0.1.13（合并 3fa7845 之后所有修改）**：@ 候选菜单显示适配（加宽 537→720px + 行字号 14→13px + 行高 40→32px，同屏 +25% 行）；parseStatusZ 重命名原路径标记 D（git 同内容删除配对成 R 源时不丢状态）+ 状态矩阵集成测试（8 种 git 状态区分 + R 配对场景）；移除文件名尾部变更标记 [M]/[A]/[D]/[R]（用户评估不实用，删除 statusLetter/appendStatusMark，dirty 仍用于「未提交变更优先」排序）
-- **重要排查结论**：当前 GUI 进程（未重启）是旧版 Host，dirty 返回 string[] → client 兼容分支全标 [A]——旧版"无法区分 A 和 M"的根源；v0.1.13 host 返回结构化 [{path,status}]，重启后正确
-- 输入框引用变色方案（lexicon/chip）经实测不可行已回退，教训见第 9 节；dsh web 重启后生效；已知限制见 README.md 与 docs/recovery.md
+> 版本历史与发布记录见 docs/CHANGELOG.md（本文件不再维护「当前状态」快照）。

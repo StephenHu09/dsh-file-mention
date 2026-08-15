@@ -49,7 +49,7 @@ dsh plugin --profile web add @hucj/dsh-file-mention
 先从源码**编译**（lib/ 是构建产物，随包发布，源码改动后必须重新构建再安装）：
 
 ```bash
-git clone git@github.com:StephenHu09/dsh-file-mention.git   # 或使用已有源码目录
+git clone git@github.com:hucj09/dsh-file-mention.git   # 或使用已有源码目录
 cd dsh-file-mention
 npm install        # 仅开发依赖（构建/测试用；产物本身零外部依赖）
 npm run check      # 编译（src/ → lib/）+ 30 个单元测试

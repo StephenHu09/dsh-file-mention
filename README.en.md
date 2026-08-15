@@ -49,7 +49,7 @@ dsh plugin --profile web add @hucj/dsh-file-mention
 First **build** from source (`lib/` is the build output shipped with the package — after changing source you must rebuild before installing):
 
 ```bash
-git clone git@github.com:StephenHu09/dsh-file-mention.git   # or use your existing source dir
+git clone git@github.com:hucj09/dsh-file-mention.git   # or use your existing source dir
 cd dsh-file-mention
 npm install        # dev deps only (for build/test; the artifacts themselves are zero-dep)
 npm run check      # build (src/ → lib/) + 30 unit tests

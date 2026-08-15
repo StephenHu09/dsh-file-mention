@@ -40,7 +40,7 @@
   "author": "hucj",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/StephenHu09/dsh-file-mention.git"
+    "url": "git+https://github.com/hucj09/dsh-file-mention.git"
   },
   "publishConfig": {
     "access": "public"
