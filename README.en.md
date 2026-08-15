@@ -53,7 +53,7 @@ First **build** from source (`lib/` is the build output shipped with the package
 git clone git@github.com:hucj09/dsh-file-mention.git   # or use your existing source dir
 cd dsh-file-mention
 npm install        # dev deps only (for build/test; the artifacts themselves are zero-dep)
-npm run check      # build (src/ → lib/) + 30 unit tests
+npm run check      # build (src/ → lib/) + 51 unit tests + 20 integration tests
 ```
 
 Then install:
@@ -127,8 +127,8 @@ Limitations: discovery requires a **root `.aiinclude`** to exist; nested configs
 
 ```bash
 npm run build   # build src/ → lib/ (zero-dep, inline + syntax check)
-npm test        # matcher unit tests (node:test, 35 cases)
-npm run test:it # host integration tests (real git + real fs, dev-scenario simulation, 18 cases)
+npm test        # matcher unit tests (node:test, 51 cases)
+npm run test:it # host integration tests (real git + real fs, dev-scenario simulation, 20 cases)
 npm run check   # build + unit + integration (full gate before release)
 ```
 
@@ -142,7 +142,8 @@ src/
 scripts/
   build.mjs   # build: inline core into lib/index.js (ESM) and lib/client.js (__ModuleLoader__ wrap)
 test/
-  core.test.js
+  core.test.js            # core pure-function unit tests (51 cases)
+  host.integration.test.js # host integration tests (real git/fs, 20 cases)
 lib/          # build output (shipped with the package, ready to use)
 docs/
   architecture.md   # architecture & design notes

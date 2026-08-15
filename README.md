@@ -53,7 +53,7 @@ dsh plugin --profile web add @hucj/dsh-file-mention
 git clone git@github.com:hucj09/dsh-file-mention.git   # 或使用已有源码目录
 cd dsh-file-mention
 npm install        # 仅开发依赖（构建/测试用；产物本身零外部依赖）
-npm run check      # 编译（src/ → lib/）+ 30 个单元测试
+npm run check      # 编译（src/ → lib/）+ 51 个单元测试 + 20 个集成测试
 ```
 
 然后安装：
@@ -127,8 +127,8 @@ build/generated/**
 
 ```bash
 npm run build   # 构建 src/ → lib/（零依赖，纯拷贝 + 语法校验）
-npm test        # 匹配器单元测试（node:test，35 用例）
-npm run test:it # host 集成测试（真实 git + 真实 fs，模拟开发场景，18 用例）
+npm test        # 匹配器单元测试（node:test，51 用例）
+npm run test:it # host 集成测试（真实 git + 真实 fs，模拟开发场景，20 用例）
 npm run check   # 构建 + 单元测试 + 集成测试（发布前全跑）
 ```
 
@@ -142,7 +142,8 @@ src/
 scripts/
   build.mjs   # 构建：内联 core 并生成 lib/index.js（ESM）与 lib/client.js（__ModuleLoader__ 包装）
 test/
-  core.test.js
+  core.test.js            # core 纯函数单元测试（51 用例）
+  host.integration.test.js # host 集成测试（真实 git/fs，20 用例）
 lib/          # 构建产物（随包发布，安装即用）
 docs/
   architecture.md   # 架构与设计说明

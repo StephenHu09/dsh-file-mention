@@ -1,15 +1,18 @@
 # AGENTS.md —— dsh-file-mention 协作规则
 
-本文档为 AI 编码助手与本仓库维护者（hucj）协作时的工作约定，是本项目规则的**唯一维护来源**。
+本文档为 AI 编码助手与本仓库维护者（hucj）协作时的**规则与约束**，是本项目规则的**唯一维护来源**。
+开发知识（架构、命令、调试）按需加载项目 skill：`.agents/skills/dfm-dev`。
 
 **文档分工**：
 - **README.md / README.en.md** —— 面向**使用者**的教程与说明（安装、卸载、配置、发布指引）
 - **AGENTS.md** —— 面向**维护者与 AI 助手**的工作规则（版本、构建、同步、提交约定）
+- **docs/CHANGELOG.md** —— 版本历史与发布记录；**docs/architecture.md** —— 设计细节
 
 ## 项目定位
 
 npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 文件引用插件。
-双端架构：Host 半体（`webServer` HTTP 路由 `/file-mention/list`）+ Client 半体（`inputTriggers` 输入触发源），构建期把 `src/core.js`（纯函数匹配器）内联进两份产物。零外部依赖。组合行 id：`file-mention`。
+双端架构：Host 半体（`webServer` HTTP 路由 `/file-mention/list`）+ Client 半体（`inputTriggers` 输入触发源），
+构建期把 `src/core.js`（纯函数匹配器）内联进两份产物。零外部依赖。组合行 id：`file-mention`。
 
 ## 角色分工
 
@@ -18,22 +21,11 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 | 维护者（hucj） | 最终决策、`dsh web` 重启、npm 发布、远程推送 |
 | AI 助手 | 实现、测试、文档、安装目录同步；**不得擅自 push 远程或发布 npm** |
 
-## 常用命令
-
-- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（51 用例）+ **集成测试（20 用例，真实 git）**
-- `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数，秒级）
-- `npm run test:it` —— node --test 跑 test/host.integration.test.js（模拟开发场景，真实 git + 真实 fs，约 20-30s）
-
-### DSH agent 沙箱注意事项（Windows）
-
-- `node --test` 会 spawn 子进程，可能被沙箱拦截；失败时改为进程内直跑
-- pwsh 命令不要带 `2>&1` 重定向（触发沙箱包装器编码 bug）；原生 exe 用 `cmd /c` 包装
-- 禁止用 `&` 分隔多条命令（PowerShell 会误当后台作业）；用 `;` 分隔
-
 ## 强制性规则
 
 ### 1. 版本号
 - 保持 **0.1.x 递增**（当前 0.1.15 → 下一 0.1.16），**禁止跳到 0.2.x**
+- **仅代码/功能改动才递增版本号**；纯文档/规则/skill 等非代码修改（如本文档、README、skill、.agents）**不更新版本号**，正常提交即可
 - 每次版本提交前必须完成下方 2/3/4 项
 
 ### 2. 构建不变式（scripts/build.mjs）
@@ -77,6 +69,7 @@ npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
 # 版本递增：0.1.x（当前 0.1.15 → 下一 0.1.16）；每次发布前 npm run check + 同步安装目录
+# 发布后：pnpm-workspace.yaml 的 minimumReleaseAgeExclude 更新为新版本（否则 2 天内 pnpm add 被拒）
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
@@ -96,60 +89,16 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 - 缓存 TTL 分层：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪+已删除 5s / extras walk 15s / `.aiinclude` 规则 60s / 客户端列表 30s（SWR）
 - 缓存键均为工作区 cwd（客户端旧版 Host 退化按 sessionId）
 - 会话不在内存注册表时回退 `sessionPersistence.inspect()` 解析 cwd（60s 缓存）
+- 大仓库输入性能（3 万文件 <15ms）由段索引/分层/索引缓存保证，改动不得破坏（回归矩阵 + 基准验证）
 
 ### 9. 已知教训（避免重犯）
-- 空响应（无 cwd 且空列表）不得写入客户端缓存（会粘 30s 导致 `@` 无反应）
-- filter-branch 的 env-filter 中 `$GIT_AUTHOR_DATE` 未被预置，改写时间戳必须用 `git show -s --format=%at` 取 epoch 计算
-- 块注释内禁止出现 `*/` 序列（如 `D/**/x/`），会提前终结注释导致语法错误
-- `git ls-files`（-c/-o/-d）在子目录输出**相对 cwd** 的路径（勿裁剪）；但 `git status --porcelain` 在子目录输出**仓库根相对**路径——两者不对称（实测），dirty 必须按 `rev-parse --show-prefix` 裁剪（v0.1.10 统一裁剪 → ls-files 列表全空；v0.1.11 整体删除裁剪 → 子目录 dirty 失效）
-- `git status --porcelain -z` 重命名条目格式 `R  NEW\0OLD\0`（**新路径在前**），parseStatusZ 取当前条目并跳过原路径字段
-- git 默认 `core.quotepath=true`（Linux 会对非 ASCII 路径八进制转义），所有 git 调用统一加 `-c core.quotepath=false`
-- 已删除文件（index 有、工作区无）仍会被 `git ls-files -c` 列出，需 `git ls-files -d` 剔除，否则 @ 后模型读取失败
-- 输入框装饰（dsh-client-ui-conversation InputBar）限制（2026-08 实测，勿重复调研）：
-  - textRef 扫描正则 `(^|\s)([/@])([\w-]+)` 组件写死，只匹配**单段**——`@docs/images/x.png` 只能匹配 `@docs`，
-    lexicon 提供什么名字都无法让含 `/`、`.` 的完整路径整体变蓝（v0.1.13 lexicon 方案因此被回退）
-  - chip（`{insert: ReferenceInsert}`）占位符 U+FFFC 在 DshChipCell 字体中 advance = **4em**（TTF 实测），
-    16px 字号下 chip 宽固定 64px、label 视觉可用约 57px（≈7 个 ASCII 字符）——路径必然截断，
-    官方 `@subagent` 源因此用 `{text}` 而非 `{insert}`；调研细节见 docs/chip-preview.html
-- npm 发布后 npmmirror 同步延迟（实测 ~20 分钟）+ pnpm 元数据缓存粘性：短时间内 `dsh plugin add`/`pnpm add`
-  会解析到旧 latest（0.1.13 发布后 add 装成 ^0.1.11）。诊断：`npm view <pkg> version`（默认 registry 看镜像同步）；
-  修复：`pnpm add <pkg>@latest` 或显式 `<pkg>@<版本>` 刷新缓存（2026-08-15 实测）
+- 已知教训（git 行为、组件层限制、发布流程坑、代码与构建坑）由项目 skill **`dfm-lessons`** 管理，
+  排查回归或设计新功能前先查阅（`.agents/skills/dfm-lessons`），新教训追加到该 skill 而非本文档
 
-## 架构（详见 docs/architecture.md）
+## 架构
 
-- src/core.js —— gitignore 语法子集匹配器（纯函数、零依赖、可单测）：
-  compileRules / lastMatchRule / matchRules / filterFiles / flattenNestedRules /
-  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix / deriveDirs（从文件列表派生目录）
-  / visibleDirs（目录逐级展开：显示深度 = 查询词 / 数量 + 1；单段查询 basename 前缀
-  匹配的深层目录突破深度直达，v0.1.14 目录引用；filterFiles 兼容目录项：尾斜杠 basename 提取；
-  TOP_DIRTY=5：dirty 数组含 mtime 时只置顶最近修改的 5 个（mtime 降序），其余回落普通文件组；
-  filterFiles 性能（v0.1.14）：score 分层 + 达到 limit 即停（子串大组不排序）+ rank 预计算缓存，
-  短查询 5000 文件 45ms → 3ms；client 侧 deriveDirs 按 files 引用缓存复用；
-  **段索引**（segment index，v0.1.14）：路径按 / 拆段，段名按小写首字符分桶（segBuckets）+ 段→路径倒排
-  （segments，列表构建时排序）；单段查询只遍历首字符桶，恰一个命中段时走 12 桶（score×rank）直接分流
-  （O(n) 无 sort/topK）；含 / 查询取最短命中段缩小候选 + 路径小写验证（语义与旧一致）——
-  3 万文件 20ms+ → 4-15ms；跨段子串（'b/c' 匹配 'ab/cd'）不再命中（实际查询不存在）。
-- src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
-  git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ 已删除剔除（-d）+ .aiinclude 重新纳入 + 未提交变更集；
-  所有 git 调用带 -c core.quotepath=false；ls-files 输出天然相对 cwd，status 输出仓库根相对（按 --show-prefix 裁剪）；
-  dirty 携带 mtime（v0.1.14：dsh fs 服务 stat 无 mtime，2c 步骤用 node:fs/promises stat 补充，
-  供客户端 TOP_DIRTY 置顶排序；stat 失败条目保留但无 mtime）；
-  分层缓存：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪+已删除 5s / extras 15s / .aiinclude 规则 60s；
-  git 不可用时降级为 .gitignore 解析 + 全量扫描。
-- src/client.js —— Client 半体：inject: inputTriggers，注册 `@` 源（order 4, 组名 file）。
-  客户端按工作区 cwd 共享缓存 + stale-while-revalidate（TTL 30s，@ 零等待）；
-  warm 钩子会话创建时预取；4 类类型图标（core.fileIcon）；
-  dirty 兼容旧版 Host string[]；dirty 仅用于「未提交变更优先」排序（v0.1.13 起
-  移除文件名尾部 [M]/[A] 变更标记——用户评估不实用）；
-  目录引用（v0.1.14）：deriveDirs 从文件列表派生目录，与文件混排（📁 图标、名称带尾斜杠，
-  插入 `@目录/ ` 供模型探索）；
-  菜单显示适配（v0.1.13+）：注入高特异性 CSS（div[role="listbox"] / button[role="option"]，
-  0,1,1 > 官方 CSS Module 0,1,0）把 @ 候选菜单加宽至 min(720px,100%)、行字号 14→13px、
-  行高压缩（min-height 40→32px、padding 8px→4px 8px、line-height 22→18px），
-  同屏多 25% 行；ctx.effect 包裹可随卸载清理。
-- scripts/build.mjs —— 剥离 export/import 后把 core.js 内联进两个产物：
-  lib/index.js（ESM 具名导出 name/inject/apply）、lib/client.js（`__ModuleLoader__.load`
-  经典脚本 + CJS factory）。产物零外部依赖。
+详见项目 skill `.agents/skills/dfm-dev` 与 docs/architecture.md
+（core 纯函数 / host 路由与缓存 / client 源与索引 / 段索引与排序规则）。
 
 ## 约定
 
