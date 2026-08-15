@@ -36,7 +36,8 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 51 用例）—— 纯函数；含排序**回归矩阵**（空查询/查询词下 score/rank/mtime 叠加快照，改动规则必须同步更新矩阵）
+- **任何代码新增功能或优化改进都必须配套对应测试项**：已有同类测试则扩展覆盖新行为，之前没有则新建（单元/集成均可）；无测试覆盖的代码改动视为未完成，不得进入版本提交
+- `test/core.test.js`（node:test，当前 54 用例）—— 纯函数；含排序**回归矩阵**（空查询/查询词下 score/rank/mtime 叠加快照，改动规则必须同步更新矩阵）
 - `test/host.integration.test.js`（node:test，当前 20 用例）—— host 集成：独立临时 git 仓库 + 真实 git/fs，模拟新建/修改/重命名/删除/子目录/忽略/回退/缓存场景；**每次版本提交前跑 npm run check 必须全绿**
 - 修改 `src/core.js` 必须同步补/改测试；修改 `src/host.js` 涉及列表行为时必须同步补/改集成测试（先复现场景再改代码）
 - 集成测试注意：host 缓存为**模块级共享**，同一仓库多实例会命中旧缓存——需要多状态的用例拆成独立仓库/独立用例
