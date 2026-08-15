@@ -17,10 +17,10 @@ A **`@` workspace file mention** plugin for the DSH (DeepSeek Harness) Web GUI: 
 | `@` input trigger | Same `inputTriggers` mechanism as the `/` skill menu, `@pluginId`, `@subagent` — multiple sources coexist |
 | Real-time filter | Matches basename or full path (case-insensitive), up to 100 results shown |
 | Type icons | 4 icon classes by extension: ⌨️ code / 📝 docs / 🖼️ images / 📄 other; directories show 📁 |
-| Directory mention | Directories are derived from the file list automatically (zero extra scanning) — `@`-pick one to insert `@docs/ ` so the model can explore the folder |
+| Directory mention | Directories are derived from the file list automatically (zero extra scanning) — `@`-pick one to insert `@docs/ ` so the model can explore the folder; **progressive expansion** — `@app` top level, `@app/` second level, `@app/src/` one deeper; **single-segment queries reach nested dirs directly** (`@10_logcat_analyze` hits `docs/10_logcat_analyze/` without typing the full path) |
 | Menu adaption | Candidate menu widened to 720px (official default 537px) + row font 14→13px + tighter rows (40→32px, +25% rows per screen) (high-specificity selectors override official CSS; affects only the `@` candidate menu) |
 | Match ranking | **Exact match** (path/basename equal) → **prefix match** → substring match (within group: changed-first, then alphabetical) |
-| Default ordering | **Uncommitted changes first** (git status changeset + untracked new files) → non-hidden dirs → hidden dirs (alphabetical within group) |
+| Default ordering | **Most recently modified/added changed files on top (cap 5, mtime desc)** → 📁 directories (alphabetical) → remaining changes + regular files (alphabetical) → hidden paths |
 | Git-tracked filtering | `git ls-files -c` tracked files ∪ `-o --exclude-standard` untracked non-ignored files; new files appear automatically, build artifacts stay out |
 | Deleted/renamed | Deleted files hidden automatically (`git ls-files -d`); renamed files (git mv) ranked as uncommitted changes |
 | `.aiinclude` | gitignore syntax, re-includes ignored files/dirs (dir rules inherit to children; nested per-directory config supported) |

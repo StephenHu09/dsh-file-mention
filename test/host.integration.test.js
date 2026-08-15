@@ -308,7 +308,10 @@ test('子目录会话（大小写变体 cwd）：同样正确', async (t) => {
   const app = createApp(upperSub)
   const { files, dirty } = await app.call()
   assert.deepEqual(files, ['keep.txt'])
-  assert.deepEqual(dirty, [{ path: 'keep.txt', status: 'M' }])
+  assert.equal(dirty.length, 1, 'dirty 应为 1 条')
+  assert.equal(dirty[0].path, 'keep.txt')
+  assert.equal(dirty[0].status, 'M')
+  assert.equal(typeof dirty[0].mtime, 'number', 'v0.1.14：dirty 应携带 mtime（置顶排序用）')
 })
 
 // ============ 配置与降级 ============

@@ -10,6 +10,8 @@
  *
  * 构建时由 scripts/build.mjs 将 src/core.js 内联进来，产物无任何外部依赖。
  */
+import { stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
   compileRules, matchRules, lastMatchRule, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
   stripRepoPrefix,
@@ -442,6 +444,23 @@ function apply(ctx) {
         const gone = new Set(deleted)
         files = files.filter((p) => !gone.has(p))
         dirty = dirty.filter((d) => !gone.has(d.path))
+      }
+
+      // 2c) 变更文件补充修改时间（mtime）：客户端只置顶最近修改的 TOP_DIRTY 个，
+      //     避免变更过多时压制目录。dsh 的 fs 服务 stat 不提供 mtime（仅
+      //     {version,type,size}），此处直接 node:fs stat——dirty 数量少（几十个内）、
+      //     并行毫秒级；stat 失败（竞态删除等）保留条目但无 mtime（客户端全量置顶兜底）。
+      if (dirty.length > 0) {
+        dirty = await Promise.all(
+          dirty.map(async (d) => {
+            try {
+              const st = await stat(join(cwd, d.path))
+              return { ...d, mtime: st.mtimeMs }
+            } catch {
+              return d
+            }
+          }),
+        )
       }
 
       files = files.filter((p) => p !== '' && !p.endsWith('/')).slice(0, CAP).sort()

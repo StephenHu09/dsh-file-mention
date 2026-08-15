@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
-  stripRepoPrefix, fileIcon, deriveDirs,
+  stripRepoPrefix, fileIcon, deriveDirs, visibleDirs, TOP_DIRTY,
 } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
@@ -273,19 +273,115 @@ test('deriveDirs：从文件列表派生全部父目录（去重、排序、尾�
   assert.deepEqual(deriveDirs(['sub/deep/leaf.js', 'sub/other.js', 'sub/deep/leaf2.js']), ['sub/', 'sub/deep/'])
 })
 
+test('visibleDirs：目录逐级展开（深度 = 查询词 / 数量 + 1）', () => {
+  const dirs = ['app/', 'app/src/', 'app/src/main/', 'docs/', 'docs/images/', 'lib/']
+  // 无斜杠/空查询：只显示顶层（第一层）
+  assert.deepEqual(visibleDirs(dirs, ''), ['app/', 'docs/', 'lib/'])
+  assert.deepEqual(visibleDirs(dirs, 'app'), ['app/', 'docs/', 'lib/'])
+  // 进入 app（尾斜杠）：深度 2——app/ 直接子目录放行，第三层 app/src/main/ 不显示
+  assert.deepEqual(visibleDirs(dirs, 'app/'), ['app/', 'app/src/', 'docs/', 'docs/images/', 'lib/'])
+  // 无尾斜杠但含斜杠：同样深度 2
+  assert.deepEqual(visibleDirs(dirs, 'app/src'), ['app/', 'app/src/', 'docs/', 'docs/images/', 'lib/'])
+  // 进入 app/src：深度 3
+  assert.deepEqual(visibleDirs(dirs, 'app/src/'), dirs)
+})
+
+test('visibleDirs：单段查询直达深层目录（basename 前缀匹配突破深度）', () => {
+  const dirs = ['docs/', 'docs/10_logcat_analyze/', 'docs/10_logcat_analyze/logs/', 'docs/images/', 'app/', 'app/src/']
+  // @10_logcat_analyze：docs/10_logcat_analyze/ 放行（basename 前缀匹配），
+  // 其他深层目录（logs/、images/、src/）不放行；顶层目录照常
+  assert.deepEqual(visibleDirs(dirs, '10_logcat_analyze'), [
+    'docs/',
+    'docs/10_logcat_analyze/',
+    'app/',
+  ])
+  // 前缀匹配：@10_log 也直达
+  assert.deepEqual(visibleDirs(dirs, '10_log'), ['docs/', 'docs/10_logcat_analyze/', 'app/'])
+  // 非前缀子串（logcat）不放行（startsWith 而非 includes）
+  assert.deepEqual(visibleDirs(dirs, 'logcat'), ['docs/', 'app/'])
+  // 短查询词不会放行大量无关目录
+  assert.deepEqual(visibleDirs(dirs, 'a'), ['docs/', 'app/'])
+})
+
+test('visibleDirs + filterFiles：@10_logcat_analyze 目录显示且排在文件前', () => {
+  const dirs = visibleDirs(['docs/', 'docs/10_logcat_analyze/', 'docs/images/'], '10_logcat_analyze')
+  const files = ['docs/10_logcat_analyze/readme.md', 'docs/10_logcat_analyze/logs/2026-01.txt', 'README.md']
+  assert.deepEqual(filterFiles([...dirs, ...files], '10_logcat_analyze', 100), [
+    'docs/10_logcat_analyze/', // 目录 rank 1 在前
+    'docs/10_logcat_analyze/logs/2026-01.txt',
+    'docs/10_logcat_analyze/readme.md',
+  ])
+})
+
+test('visibleDirs + filterFiles：@app/ 逐级展开只显示第二层（不显示更深子目录）', () => {
+  const dirs = visibleDirs(['app/', 'app/src/', 'app/src/main/', 'app/src/main/java/', 'docs/'], 'app/')
+  const files = ['app/src/main/java/com/x/MainActivity.kt', 'app/build.gradle', 'docs/architecture.md']
+  assert.deepEqual(filterFiles([...dirs, ...files], 'app/', 100), [
+    'app/', // 第一层（路径含 app/）
+    'app/src/', // 第二层 ✓
+    // 第三层 app/src/main/、app/src/main/java/ 已被 visibleDirs 挡掉
+    'app/build.gradle',
+    'app/src/main/java/com/x/MainActivity.kt',
+  ])
+})
+
 test('filterFiles：目录项参与过滤与排序（尾斜杠 basename 正确提取）', () => {
   const items = ['docs/', 'docs/architecture.md', 'src/', 'src/core.js', '.agents/', 'README.md']
   // 目录 `docs/` basename = docs：前缀命中排前；同 score 下字母序 `docs/` < `docs/architecture.md`
   assert.deepEqual(filterFiles(items, 'docs'), ['docs/', 'docs/architecture.md'])
-  // 空查询：普通目录/文件 rank 1 按字母序，隐藏目录 rank 2 沉底
+  // 空查询：目录（rank 1）集中置前 → 普通文件（rank 2）→ 隐藏（rank 3）
   assert.deepEqual(filterFiles(items, ''), [
-    'README.md',
     'docs/',
-    'docs/architecture.md',
     'src/',
+    'README.md',
+    'docs/architecture.md',
     'src/core.js',
     '.agents/',
   ])
+})
+
+test('filterFiles：目录集中置前（变更文件 > 目录 > 普通文件 > 隐藏）', () => {
+  const items = ['zzz.txt', '.hidden/', '.env', 'aaa/', 'docs/', 'app/Main.kt']
+  const dirty = new Set(['zzz.txt'])
+  assert.deepEqual(filterFiles(items, '', 100, dirty), [
+    'zzz.txt', // rank 0 变更
+    'aaa/', // rank 1 目录（字母序）
+    'docs/',
+    'app/Main.kt', // rank 2 普通文件
+    '.env', // rank 3 隐藏文件
+    '.hidden/', // rank 3 隐藏目录
+  ])
+})
+
+test('filterFiles：dirty 数组含 mtime 时只置顶最近修改的 TOP_DIRTY 个（其余回落 rank 2）', () => {
+  const items = ['f1.txt', 'f2.txt', 'f3.txt', 'f4.txt', 'f5.txt', 'f6.txt', 'f7.txt', 'docs/', 'aaa.txt']
+  const dirty = [
+    { path: 'f1.txt', mtime: 100 },
+    { path: 'f2.txt', mtime: 200 },
+    { path: 'f3.txt', mtime: 300 },
+    { path: 'f4.txt', mtime: 400 },
+    { path: 'f5.txt', mtime: 500 },
+    { path: 'f6.txt', mtime: 600 },
+    { path: 'f7.txt', mtime: 700 },
+  ]
+  // TOP_DIRTY=5：mtime 最大 5 个（f7..f3）置顶（mtime 降序），其余变更（f2/f1）回落 rank 2 与普通文件混排
+  assert.deepEqual(filterFiles(items, '', 100, dirty), [
+    'f7.txt', 'f6.txt', 'f5.txt', 'f4.txt', 'f3.txt',
+    'docs/',
+    'aaa.txt', 'f1.txt', 'f2.txt',
+  ])
+  assert.equal(TOP_DIRTY, 5)
+})
+
+test('filterFiles：dirty 数组无 mtime（旧版 Host）回退全量置顶', () => {
+  const items = ['f1.txt', 'f2.txt', 'docs/']
+  assert.deepEqual(filterFiles(items, '', 100, [{ path: 'f1.txt' }, { path: 'f2.txt' }]), [
+    'f1.txt',
+    'f2.txt',
+    'docs/',
+  ])
+  // string[] 旧格式同样全量置顶
+  assert.deepEqual(filterFiles(items, '', 100, ['f1.txt']), ['f1.txt', 'docs/', 'f2.txt'])
 })
 
 test('filterFiles：dirty 不影响目录（目录不在变更集，仍 rank 1）', () => {
@@ -297,6 +393,53 @@ test('filterFiles：dirty 不影响目录（目录不在变更集，仍 rank 1�
     'docs/',
     'src/',
   ])
+})
+
+test('回归矩阵：空查询完整排序快照（TOP_DIRTY + 目录 + 剩余变更 + 隐藏）', () => {
+  // 规则快照：变更(按 mtime 降序取前 5) → 目录(字母序) → 剩余变更+普通文件(字母序) → 隐藏。
+  // 未来调整任一规则（TOP_DIRTY 数量/rank/目录深度）此处应立即变红。
+  const items = [
+    'app/', 'app/src/', 'docs/', 'docs/images/',
+    'a.txt', 'b.txt', 'c.txt', 'zzz.txt', '.env', '.hidden/', 'README.md',
+  ]
+  const dirty = [
+    { path: 'a.txt', mtime: 100 },
+    { path: 'zzz.txt', mtime: 900 },
+    { path: 'c.txt', mtime: 300 },
+    { path: 'b.txt', mtime: 500 },
+  ]
+  assert.deepEqual(filterFiles(items, '', 100, dirty), [
+    'zzz.txt', // mtime 900
+    'b.txt', // 500
+    'c.txt', // 300
+    'a.txt', // 100（4 个变更全置顶，未超 TOP_DIRTY）
+    'app/', // 目录 rank 1，字母序
+    'app/src/',
+    'docs/',
+    'docs/images/',
+    'README.md', // rank 2 普通文件
+    '.env', // rank 3 隐藏文件
+    '.hidden/', // rank 3 隐藏目录
+  ])
+})
+
+test('回归矩阵：查询词下 score/rank/mtime 叠加快照', () => {
+  // score 优先于 rank：同 score 组内按 rank；rank 0 组内按 mtime。
+  const items = ['app/', 'app/src/', 'a.txt', 'ab.txt', 'b.txt', 'docs/']
+  const dirty = [
+    { path: 'ab.txt', mtime: 100 }, // 旧
+    { path: 'b.txt', mtime: 900 }, // 新
+  ]
+  // 'a'：全部前缀命中（score 1，a.txt 的 basename 是 'a.txt' 非精确）→
+  // rank 0 变更(ab.txt) 在 rank 1 目录(app/)前；a.txt rank 2 最后
+  assert.deepEqual(filterFiles(items, 'a', 100, dirty), [
+    'ab.txt',
+    'app/',
+    'app/src/',
+    'a.txt',
+  ])
+  // 'b'：b.txt 精确(0)；ab.txt 子串(2)
+  assert.deepEqual(filterFiles(items, 'b', 100, dirty), ['b.txt', 'ab.txt'])
 })
 
 test('flattenNestedRules：basename 规则展开为直接子级 + 任意深度', () => {

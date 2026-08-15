@@ -11,7 +11,7 @@
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
  */
-import { filterFiles, fileIcon, deriveDirs } from './core.js'
+import { filterFiles, fileIcon, deriveDirs, visibleDirs } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
@@ -104,11 +104,10 @@ function apply(ctx) {
     async candidates(session, { query, signal }) {
       const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
-      // dirty 仅用于「未提交变更优先」排序；目录由文件列表派生（deriveDirs），
-      // 与文件混排（目录 rank 1，与普通文件同层；变更文件仍置顶）
-      const dirtySet = new Set(dirty.map((d) => d.path))
-      const dirs = deriveDirs(files)
-      return filterFiles([...dirs, ...files], query, 100, dirtySet).map((f) => {
+      // dirty 数组直接传给 filterFiles：含 mtime 时按最近修改置顶前 TOP_DIRTY 个，
+      // 无 mtime（旧版 Host string[]/无 stat）回退全量置顶
+      const dirs = visibleDirs(deriveDirs(files), query)
+      return filterFiles([...dirs, ...files], query, 100, dirty).map((f) => {
         const isDir = f.endsWith('/')
         const base = (isDir ? f.slice(0, -1) : f).slice(f.lastIndexOf('/') + 1)
         return {

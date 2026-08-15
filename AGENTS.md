@@ -20,7 +20,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 
 ## 常用命令
 
-- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（42 用例）+ **集成测试（20 用例，真实 git）**
+- `npm run check` —— build（内联构建 src/ → lib/）+ 单元测试（51 用例）+ **集成测试（20 用例，真实 git）**
 - `npm test` —— node --test 跑 test/core.test.js（纯 core.js 函数，秒级）
 - `npm run test:it` —— node --test 跑 test/host.integration.test.js（模拟开发场景，真实 git + 真实 fs，约 20-30s）
 
@@ -44,7 +44,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 - 构建幂等：重复 build 不产生 git diff
 
 ### 3. 测试
-- `test/core.test.js`（node:test，当前 42 用例）—— 纯函数
+- `test/core.test.js`（node:test，当前 51 用例）—— 纯函数；含排序**回归矩阵**（空查询/查询词下 score/rank/mtime 叠加快照，改动规则必须同步更新矩阵）
 - `test/host.integration.test.js`（node:test，当前 20 用例）—— host 集成：独立临时 git 仓库 + 真实 git/fs，模拟新建/修改/重命名/删除/子目录/忽略/回退/缓存场景；**每次版本提交前跑 npm run check 必须全绿**
 - 修改 `src/core.js` 必须同步补/改测试；修改 `src/host.js` 涉及列表行为时必须同步补/改集成测试（先复现场景再改代码）
 - 集成测试注意：host 缓存为**模块级共享**，同一仓库多实例会命中旧缓存——需要多状态的用例拆成独立仓库/独立用例
@@ -61,7 +61,7 @@ lib/index.js  lib/client.js  package.json  README.md  README.en.md  cordis.patch
 > 哈希校验用 `Get-FileHash` 对比源与目标。
 
 ### 5. 提交与发布
-- 常规迭代：`git add -A && git commit`（本地提交，历史保持一个版本一个提交、信息描述代码改动）
+- **提交必须用户明确指示**：一个功能可能反复修改多次才完整，AI 不得在迭代过程中自行 `git commit`；用户要求提交时统一执行 `git add -A && git commit`（本地提交，历史保持一个版本一个提交、信息描述代码改动）
 - **push 远程 / npm publish 必须用户明确指示**，不自动执行
 - 历史重写（filter-branch 等）前必须告知用户并确认；重写前先备份（bundle/tag）
 
@@ -119,11 +119,15 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
 
 - src/core.js —— gitignore 语法子集匹配器（纯函数、零依赖、可单测）：
   compileRules / lastMatchRule / matchRules / filterFiles / flattenNestedRules /
-  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix / deriveDirs（从文件列表派生目录，
-  v0.1.14 目录引用；filterFiles 兼容目录项：尾斜杠 basename 提取）。
+  parseStatusZ / dirMayLeadToMatch / stripRepoPrefix / deriveDirs（从文件列表派生目录）
+  / visibleDirs（目录逐级展开：显示深度 = 查询词 / 数量 + 1；单段查询 basename 前缀
+  匹配的深层目录突破深度直达，v0.1.14 目录引用；filterFiles 兼容目录项：尾斜杠 basename 提取；
+  TOP_DIRTY=5：dirty 数组含 mtime 时只置顶最近修改的 5 个（mtime 降序），其余回落普通文件组）。
 - src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
   git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ 已删除剔除（-d）+ .aiinclude 重新纳入 + 未提交变更集；
   所有 git 调用带 -c core.quotepath=false；ls-files 输出天然相对 cwd，status 输出仓库根相对（按 --show-prefix 裁剪）；
+  dirty 携带 mtime（v0.1.14：dsh fs 服务 stat 无 mtime，2c 步骤用 node:fs/promises stat 补充，
+  供客户端 TOP_DIRTY 置顶排序；stat 失败条目保留但无 mtime）；
   分层缓存：仓库根 60s / 跟踪列表 15s / 变更集+未跟踪+已删除 5s / extras 15s / .aiinclude 规则 60s；
   git 不可用时降级为 .gitignore 解析 + 全量扫描。
 - src/client.js —— Client 半体：inject: inputTriggers，注册 `@` 源（order 4, 组名 file）。
