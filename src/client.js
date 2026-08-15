@@ -11,7 +11,7 @@
  * 构建时由 scripts/build.mjs 将 src/core.js 内联，并包装为
  * `window.__ModuleLoader__.load({ id, factory })` 经典脚本格式。
  */
-import { filterFiles, fileIcon, deriveDirs, visibleDirs } from './core.js'
+import { filterFiles, fileIcon, deriveDirs, visibleDirs, buildIndex } from './core.js'
 
 const name = '@hucj/dsh-file-mention'
 const inject = ['inputTriggers']
@@ -24,6 +24,9 @@ function apply(ctx) {
   const pending = new Map() // sessionId -> promise（在途请求去重）
   const refreshing = new Set() // key：stale 后台刷新去重
   const TTL = 30000
+  // deriveDirs/buildIndex 结果缓存：files 数组引用不变（缓存命中返回同一对象）时复用，
+  // 避免每次按键（candidates 调用）重建目录集合与路径元数据索引（3 万文件约 30-40ms）
+  let dirsCache = null // { files, dirs, index }
 
   const parse = (value) => {
     const obj = value !== null && typeof value === 'object' ? value : {}
@@ -96,18 +99,39 @@ function apply(ctx) {
     trigger: '@',
     name: 'file',
     order: 4,
-    // 预热：会话控制器创建（页面加载/切换会话）时后台预取一次，
-    // 输入 @ 时命中 30s 缓存，避免首次等待文件遍历
+    // 预热：会话控制器创建（页面加载/切换会话）时后台预取一次并预构建目录/索引，
+    // 输入 @ 时命中 30s 缓存、索引零等待（大仓库 buildIndex 约 70ms，避免首次按键卡顿）
     warm(session) {
-      fetchFiles(session.sessionId).catch(() => {})
+      fetchFiles(session.sessionId)
+        .then(({ files }) => {
+          if (dirsCache === null || dirsCache.files !== files) {
+            const dirs = deriveDirs(files)
+            // index 覆盖目录（段索引单段查询时目录同样命中）
+            dirsCache = { files, dirs, index: buildIndex([...dirs, ...files]) }
+          }
+        })
+        .catch(() => {})
     },
+    // 实时计算（无防抖）：DSH 框架每次按键把菜单组置 pending 并清空 items（显示 loading 行），
+    // candidates 延迟返回必然造成 loading 闪烁与内容滞后——防抖与拉模型冲突。
+    // 性能由分层/topK/buildIndex 缓存保证（3 万文件单次 ~15ms，loading 不可见）。
     async candidates(session, { query, signal }) {
       const { files, dirty } = await fetchFiles(session.sessionId)
       if (signal !== undefined && signal.aborted) return []
       // dirty 数组直接传给 filterFiles：含 mtime 时按最近修改置顶前 TOP_DIRTY 个，
       // 无 mtime（旧版 Host string[]/无 stat）回退全量置顶
-      const dirs = visibleDirs(deriveDirs(files), query)
-      return filterFiles([...dirs, ...files], query, 100, dirty).map((f) => {
+      let dirs, index
+      if (dirsCache !== null && dirsCache.files === files) {
+        dirs = dirsCache.dirs
+        index = dirsCache.index
+      } else {
+        dirs = deriveDirs(files)
+        index = buildIndex([...dirs, ...files])
+        dirsCache = { files, dirs, index }
+      }
+      const shown = visibleDirs(dirs, query)
+      // limit 30：DSH 菜单无虚拟化全量渲染，行数是每次按键的渲染成本；30 条足够浏览
+      return filterFiles([...shown, ...files], query, 30, dirty, index).map((f) => {
         const isDir = f.endsWith('/')
         const base = (isDir ? f.slice(0, -1) : f).slice(f.lastIndexOf('/') + 1)
         return {

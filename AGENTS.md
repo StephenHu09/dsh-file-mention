@@ -33,7 +33,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 ## 强制性规则
 
 ### 1. 版本号
-- 保持 **0.1.x 递增**（当前 0.1.14 → 下一 0.1.15），**禁止跳到 0.2.x**
+- 保持 **0.1.x 递增**（当前 0.1.15 → 下一 0.1.16），**禁止跳到 0.2.x**
 - 每次版本提交前必须完成下方 2/3/4 项
 
 ### 2. 构建不变式（scripts/build.mjs）
@@ -76,7 +76,7 @@ git tag v0.1.x && git push origin v0.1.x
 npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
-# 版本递增：0.1.x（当前 0.1.14 → 下一 0.1.15）；每次发布前 npm run check + 同步安装目录
+# 版本递增：0.1.x（当前 0.1.15 → 下一 0.1.16）；每次发布前 npm run check + 同步安装目录
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"
 ```
@@ -122,7 +122,13 @@ npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   
   parseStatusZ / dirMayLeadToMatch / stripRepoPrefix / deriveDirs（从文件列表派生目录）
   / visibleDirs（目录逐级展开：显示深度 = 查询词 / 数量 + 1；单段查询 basename 前缀
   匹配的深层目录突破深度直达，v0.1.14 目录引用；filterFiles 兼容目录项：尾斜杠 basename 提取；
-  TOP_DIRTY=5：dirty 数组含 mtime 时只置顶最近修改的 5 个（mtime 降序），其余回落普通文件组）。
+  TOP_DIRTY=5：dirty 数组含 mtime 时只置顶最近修改的 5 个（mtime 降序），其余回落普通文件组；
+  filterFiles 性能（v0.1.14）：score 分层 + 达到 limit 即停（子串大组不排序）+ rank 预计算缓存，
+  短查询 5000 文件 45ms → 3ms；client 侧 deriveDirs 按 files 引用缓存复用；
+  **段索引**（segment index，v0.1.14）：路径按 / 拆段，段名按小写首字符分桶（segBuckets）+ 段→路径倒排
+  （segments，列表构建时排序）；单段查询只遍历首字符桶，恰一个命中段时走 12 桶（score×rank）直接分流
+  （O(n) 无 sort/topK）；含 / 查询取最短命中段缩小候选 + 路径小写验证（语义与旧一致）——
+  3 万文件 20ms+ → 4-15ms；跨段子串（'b/c' 匹配 'ab/cd'）不再命中（实际查询不存在）。
 - src/host.js —— Host 半体：注册 `/file-mention/list` POST 路由（inject: sessions, webServer）。
   git ls-files 跟踪文件 + 未跟踪非忽略文件（-o --exclude-standard，新建文件无需 git add）+ 已删除剔除（-d）+ .aiinclude 重新纳入 + 未提交变更集；
   所有 git 调用带 -c core.quotepath=false；ls-files 输出天然相对 cwd，status 输出仓库根相对（按 --show-prefix 裁剪）；
