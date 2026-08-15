@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compileRules, matchRules, filterFiles, dirMayLeadToMatch, parseStatusZ, flattenNestedRules,
-  stripRepoPrefix, fileIcon, deriveDirs, visibleDirs, TOP_DIRTY,
+  stripRepoPrefix, fileIcon, deriveDirs, visibleDirs, TOP_DIRTY, buildIndex,
 } from '../src/core.js'
 
 test('compileRules 忽略注释与空行', () => {
@@ -501,4 +501,84 @@ test('dirMayLeadToMatch：锚定规则只放行锚定前缀', () => {
   const rules = compileRules(['/build'])
   assert.equal(dirMayLeadToMatch(rules, 'build'), true)
   assert.equal(dirMayLeadToMatch(rules, 'app'), false)
+})
+
+// ============ v0.1.15 段索引正确性与性能回归 ============
+
+test('段索引等价性：index 路径与无 index 全扫描结果一致（确定性数据）', () => {
+  // 所有既有 filterFiles 测试均不传 index（走全扫描分支）——段索引快速路径
+  // （首字符桶/12 桶分流/含/最短段）必须与全扫描结果完全一致。
+  const files = [
+    'app/src/main/java/com/intian/seal/feature/stamping/PreviewFragment.kt',
+    'app/src/main/java/com/intian/seal/feature/scan/ScanActivity.kt',
+    'lib/core/net/SealClient.kt',
+    'docs/10_logcat_analyze/readme.md',
+    'docs/architecture.md',
+    'README.md',
+    '.agents/skills/dfm-dev/SKILL.md',
+    'zzz.txt',
+  ]
+  const dirty = [
+    { path: 'docs/architecture.md', mtime: 500 },
+    { path: 'zzz.txt', mtime: 900 },
+  ]
+  const dirs = deriveDirs(files)
+  const index = buildIndex([...dirs, ...files])
+  // 查询词避免跨段子串（段索引与全扫描的已知差异，实际查询不存在）
+  const queries = ['', 'a', 's', 'seal', 'stamping', 'view', '10', 'docs', 'readme', 'app/src', 'com/intian/seal', 'seal/feature', 'zzz']
+  for (const q of queries) {
+    assert.deepEqual(
+      filterFiles([...dirs, ...files], q, 30, dirty, index),
+      filterFiles([...dirs, ...files], q, 30, dirty),
+      `确定性查询 '${q || '(空)'}' 段索引与全扫描结果应一致`,
+    )
+  }
+})
+
+test('段索引等价性：随机路径集多查询一致（2000 路径）', () => {
+  // 固定种子伪随机，保证测试可复现
+  const segs = ['app', 'src', 'main', 'java', 'com', 'intian', 'seal', 'feature', 'scan', 'core', 'net', 'db', 'ui', 'docs', 'test', 'lib', 'module', '10_logcat_analyze', 'build', 'generated']
+  const files = []
+  let seed = 42
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
+  for (let i = 0; i < 2000; i++) {
+    const depth = 2 + Math.floor(rnd() * 4)
+    const parts = []
+    for (let d = 0; d < depth; d++) parts.push(segs[Math.floor(rnd() * segs.length)])
+    files.push(parts.join('/') + `/File${i}.kt`)
+  }
+  const dirty = files.slice(0, 20).map((p, i) => ({ path: p, mtime: i }))
+  const dirs = deriveDirs(files)
+  const index = buildIndex([...dirs, ...files])
+  const queries = ['', 'a', 's', 'seal', 'java', 'file', '10', 'com/intian', 'seal/feature', 'generated', 'main/java']
+  for (const q of queries) {
+    assert.deepEqual(
+      filterFiles([...dirs, ...files], q, 50, dirty, index),
+      filterFiles([...dirs, ...files], q, 50, dirty),
+      `随机查询 '${q || '(空)'}' 段索引与全扫描结果应一致`,
+    )
+  }
+})
+
+test('性能边界：3 万文件查询 <150ms（防段索引/topK 类退化）', () => {
+  // 宽松阈值（当前实测 5-15ms，10 倍余量防 CI 抖动）；主要防 O(n²) 类回归
+  // （如快速选择 pivot 退化、段索引失效回退全扫描）
+  const N = 30000
+  const files = []
+  const pkgs = ['com/intian/seal/feature/stamping', 'com/intian/seal/feature/scan', 'com/intian/seal/core/net', 'com/intian/seal/core/db', 'com/intian/base/util']
+  for (let i = 0; i < N; i++) {
+    files.push(`${['app', 'lib', 'module'][i % 3]}/src/main/java/${pkgs[i % 5]}/ui/${['View', 'Fragment', 'Activity', 'Adapter', 'Model'][i % 5]}${i}.kt`)
+  }
+  const dirty = files.slice(0, 30).map((p, i) => ({ path: p, mtime: 1000 + i }))
+  const dirs = deriveDirs(files)
+  const index = buildIndex([...dirs, ...files])
+  for (const q of ['', 'a', 'seal', 'com/intian/seal']) {
+    const t0 = performance.now()
+    filterFiles([...dirs, ...files], q, 30, dirty, index)
+    const ms = performance.now() - t0
+    assert.ok(ms < 150, `3 万文件查询 '${q || '(空)'}' 应 <150ms（实际 ${ms.toFixed(1)}ms）——性能回归？`)
+  }
 })

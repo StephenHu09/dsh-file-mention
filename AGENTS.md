@@ -24,7 +24,7 @@ npm 包 **`@hucj/dsh-file-mention`**：DSH（DeepSeek Harness）Web GUI 的 `@` 
 ## 强制性规则
 
 ### 1. 版本号
-- 保持 **0.1.x 递增**（当前 0.1.15 → 下一 0.1.16），**禁止跳到 0.2.x**
+- 保持 **0.1.x 递增**（当前 0.1.16 → 下一 0.1.17），**禁止跳到 0.2.x**
 - **仅代码/功能改动才递增版本号**；纯文档/规则/skill 等非代码修改（如本文档、README、skill、.agents）**不更新版本号**，正常提交即可
 - 每次版本提交前必须完成下方 2/3/4 项
 
@@ -68,7 +68,7 @@ git tag v0.1.x && git push origin v0.1.x
 npm publish --registry=https://registry.npmjs.org        # 认证：~/.npmrc 中 granular token（bypass 2FA，仅限本包）
 npm view @hucj/dsh-file-mention version --registry=https://registry.npmjs.org   # 验证
 
-# 版本递增：0.1.x（当前 0.1.15 → 下一 0.1.16）；每次发布前 npm run check + 同步安装目录
+# 版本递增：0.1.x（当前 0.1.16 → 下一 0.1.17）；每次发布前 npm run check + 同步安装目录
 # 发布后：pnpm-workspace.yaml 的 minimumReleaseAgeExclude 更新为新版本（否则 2 天内 pnpm add 被拒）
 # 撤销（72h 内）：npm unpublish @hucj/dsh-file-mention@<版本号> --force
 # 弃用（推荐替代）：npm deprecate @hucj/dsh-file-mention@<版本号> "说明"

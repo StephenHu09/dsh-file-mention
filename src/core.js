@@ -333,8 +333,10 @@ export function buildIndex(files) {
     isDir.set(f, f.endsWith('/'))
     isHidden.set(f, f.split('/')[0].startsWith('.'))
     const segs = (f.endsWith('/') ? f.slice(0, -1) : f).split('/')
+    const seenSeg = new Set() // 路径内段去重：同一路径含同一段名多次时只入倒排一次
     for (const s of segs) {
-      if (s === '') continue
+      if (s === '' || seenSeg.has(s)) continue
+      seenSeg.add(s)
       let arr = segments.get(s)
       if (arr === undefined) {
         arr = []
@@ -462,49 +464,51 @@ export function filterFiles(files, query, limit = 100, dirty, index) {
   if (q === '') {
     groups[0] = [...files]
   } else if (index !== undefined && index.segBuckets !== undefined && !q.includes('/')) {
-    // 段索引快速路径（单段查询）：遍历首字符桶的段名（~路径数/26），段名包含 q 的
-    // 段 → 倒排路径。命中集合覆盖前缀（段前缀）与子串（段包含）语义；
-    // 跨段子串（如 'b/c' 匹配 'ab/cd'）不再命中——实际查询中不存在，可忽略。
+    // 段索引快速路径（单段查询）：段名包含 q 的段 → 倒排路径。
+    // 遍历**全部段名**（段名去重后数量 ≈ 路径数，但段名短，3 万条 ~5-8ms，仍比
+    // 全扫描路径快 3 倍）——不能只查 q[0] 首字符桶：段名含 q 时首字符可 ≠ q[0]
+    // （如 'main' 含 'a'），只查首字符桶会漏检（实测 bug）。
+    // 命中集合覆盖前缀（段前缀）与子串（段包含）语义；跨段子串（如 'b/c' 匹配
+    // 'ab/cd'）不再命中——实际查询中不存在，可忽略。
     // 恰一个命中段时（最常见：包名/目录名查询），段路径列表已排序 →
     // 按 (score, rank) 12 桶直接分流（O(n) 无 sort/topK）并直接产出；
     // 多命中段合并需去重，回退 Set+topK（走 groups 统一循环）。
-    const bucket = index.segBuckets.get(q[0])
-    if (bucket !== undefined) {
-      const hitSegs = []
+    const hitSegs = []
+    for (const bucket of index.segBuckets.values()) {
       for (const seg of bucket) {
         if (seg.toLowerCase().includes(q)) hitSegs.push(seg)
       }
-      if (hitSegs.length === 1) {
-        const segPaths = index.segments.get(hitSegs[0])
-        if (segPaths !== undefined) {
-          // 单命中段：段路径列表已排序 → 12 桶直接分流（O(n) 无 sort/topK）
-          const b9 = Array.from({ length: 12 }, () => [])
-          for (const f of segPaths) {
-            const lower = lowerOf(f)
-            const base = baseOf(f)
-            const s = lower === q || base === q ? 0
-              : base.startsWith(q) || lower.startsWith(q) ? 1
-              : 2
-            b9[s * 4 + rankOf(f)].push(f)
-          }
-          collectBuckets(b9)
-          if (out.length >= limit) return out
-          out.length = 0 // 命中不足 limit：清空，走全扫描补充
-          needFullScan = true
-        }
-      } else if (hitSegs.length > 1) {
-        const hit = new Set()
-        for (const seg of hitSegs) {
-          const ps = index.segments.get(seg)
-          if (ps !== undefined) for (const p of ps) hit.add(p)
-        }
-        for (const f of hit) {
+    }
+    if (hitSegs.length === 1) {
+      const segPaths = index.segments.get(hitSegs[0])
+      if (segPaths !== undefined) {
+        // 单命中段：段路径列表已排序 → 12 桶直接分流（O(n) 无 sort/topK）
+        const b9 = Array.from({ length: 12 }, () => [])
+        for (const f of segPaths) {
           const lower = lowerOf(f)
           const base = baseOf(f)
-          if (lower === q || base === q) groups[0].push(f)
-          else if (base.startsWith(q) || lower.startsWith(q)) groups[1].push(f)
-          else groups[2].push(f)
+          const s = lower === q || base === q ? 0
+            : base.startsWith(q) || lower.startsWith(q) ? 1
+            : 2
+          b9[s * 4 + rankOf(f)].push(f)
         }
+        collectBuckets(b9)
+        if (out.length >= limit) return out
+        out.length = 0 // 命中不足 limit：清空，走全扫描补充
+        needFullScan = true
+      }
+    } else if (hitSegs.length > 1) {
+      const hit = new Set()
+      for (const seg of hitSegs) {
+        const ps = index.segments.get(seg)
+        if (ps !== undefined) for (const p of ps) hit.add(p)
+      }
+      for (const f of hit) {
+        const lower = lowerOf(f)
+        const base = baseOf(f)
+        if (lower === q || base === q) groups[0].push(f)
+        else if (base.startsWith(q) || lower.startsWith(q)) groups[1].push(f)
+        else groups[2].push(f)
       }
     }
   } else if (index !== undefined && index.segBuckets !== undefined && q.includes('/')) {
